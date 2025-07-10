@@ -90,17 +90,24 @@ Examples:
 
 def update_config_from_args(config: Config, args: argparse.Namespace) -> Config:
     """Update configuration with command line arguments."""
-    # Update only non-None arguments
+    # Argument name mappings
+    arg_mappings = {
+        'input': 'input_folder',
+        'output': 'output_folder',
+        'model': 'model_path',
+        'feature_weight': 'feature_preservation_weight',
+        'enable_adaptive': 'enable_adaptive_processing',
+        'enable_constitutional': 'enable_constitutional_constraints'
+    }
+    
     for key, value in vars(args).items():
         if value is not None:
-            # Convert argument names to config attribute names
-            config_key = key.replace('-', '_')
+            # Use mapping if available, otherwise convert dashes
+            config_key = arg_mappings.get(key, key.replace('-', '_'))
             
-            # Special handling for enable flags
-            if key.startswith('enable_'):
-                if hasattr(config, config_key):
-                    setattr(config, config_key, value)
-            elif hasattr(config, config_key):
+            if hasattr(config, config_key):
                 setattr(config, config_key, value)
+            else:
+                logging.warning(f"Unknown config attribute: {config_key}")
     
     return config
