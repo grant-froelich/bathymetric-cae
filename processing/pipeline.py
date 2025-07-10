@@ -98,6 +98,7 @@ class EnhancedBathymetricCAEPipeline:
         """Get existing ensemble or train new one."""
         try:
             # Try to load existing ensemble
+            from models.ensemble import BathymetricEnsemble
             ensemble_models = []
             for i in range(self.config.ensemble_size):
                 model_file = f"{model_path}_ensemble_{i}.h5"
