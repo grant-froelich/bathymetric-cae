@@ -22,7 +22,7 @@ from core.adaptive_processor import AdaptiveProcessor
 from core.quality_metrics import BathymetricQualityMetrics
 from review.expert_system import ExpertReviewSystem
 from processing.data_processor import BathymetricProcessor
-from utils.memory_utils import memory_monitor, optimize_gpu_memory
+from utils.memory_utils import memory_monitor, optimize_gpu_memory, log_memory_usage
 from utils.visualization import create_enhanced_visualization, plot_training_history
 
 
@@ -159,7 +159,7 @@ class EnhancedBathymetricCAEPipeline:
         return processor.preprocess_bathymetric_grid(file_path)
     
     def _prepare_training_data(self, file_list: List[Path]) -> Tuple[np.ndarray, np.ndarray]:
-    """Prepare enhanced training data with adaptive preprocessing."""
+        """Prepare enhanced training data with adaptive preprocessing."""
         all_inputs = []
         all_targets = []
     
@@ -271,43 +271,64 @@ class EnhancedBathymetricCAEPipeline:
         """Process files using enhanced ensemble approach."""
         output_path = Path(output_folder)
         processor = BathymetricProcessor(self.config)
-        
+    
         successful_files = []
         failed_files = []
         processing_stats = []
-        
+    
         self.logger.info(f"Processing {len(file_list)} files with enhanced pipeline...")
-        
+    
         for i, file_path in enumerate(file_list, 1):
             try:
                 self.logger.info(f"Processing file {i}/{len(file_list)}: {file_path.name}")
-                
+            
                 # Process single file with enhanced features
                 stats = self._process_single_file_enhanced(
                     processor, file_path, output_path
                 )
                 processing_stats.append(stats)
                 successful_files.append(file_path.name)
-                
+            
                 # Check if flagging for expert review is needed
                 if (self.expert_review and 
                     stats.get('composite_quality', 1.0) < self.config.quality_threshold):
                     self._flag_for_expert_review(file_path.name, stats)
-                
-                # Cleanup memory periodically
+            
+                # ✅ MEMORY MANAGEMENT FIXES:
+                # Clear TensorFlow session periodically
+                if i % 10 == 0:
+                    import gc
+                    gc.collect()
+                    # Clear TensorFlow backend
+                    tf.keras.backend.clear_session()
+                    self.logger.info(f"Memory cleanup after processing {i} files")
+            
+                # Force garbage collection every 5 files
                 if i % 5 == 0:
+                    import gc
                     gc.collect()
                 
             except Exception as e:
                 self.logger.error(f"Failed to process {file_path.name}: {e}")
                 failed_files.append(file_path.name)
+            
+                # ✅ Cleanup on error too
+                import gc
+                gc.collect()
                 continue
-        
+    
+        # ✅ Final cleanup
+        import gc
+        gc.collect()
+        tf.keras.backend.clear_session()
+    
         # Generate enhanced summary report
         self._generate_enhanced_summary_report(successful_files, failed_files, processing_stats)
     
     def _process_single_file_enhanced(self, processor, file_path: Path, output_path: Path) -> Dict:
         """Process a single file with enhanced ensemble approach."""
+        log_memory_usage(f"Starting {file_path.name}")
+        
         with memory_monitor(f"Enhanced processing {file_path.name}"):
             # Load and preprocess data
             input_data, original_shape, geo_metadata = processor.preprocess_bathymetric_grid(file_path)
@@ -367,6 +388,7 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.info(f"Enhanced processing complete for {file_path.name} - "
                            f"Quality: {all_metrics.get('composite_quality', 0):.3f}")
             
+            log_memory_usage(f"Completed {file_path.name}")
             return stats
     
     def _calculate_comprehensive_quality_metrics(self, original: np.ndarray, 
