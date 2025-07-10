@@ -209,11 +209,8 @@ class UncertaintyCAE(AdvancedCAE):
         optimizer = tf.keras.optimizers.AdamW(learning_rate=self.config.learning_rate)
         model.compile(
             optimizer=optimizer,
-            loss={
-                'depth_output': self._get_loss_function(),
-                'uncertainty_output': 'mse'
-            },
-            loss_weights={'depth_output': 1.0, 'uncertainty_output': 0.1},
+            loss=['mse', 'mse'],  # FIX: Use list instead of dict
+            loss_weights=[1.0, 0.1],  # FIX: Use list instead of dict
             metrics=['mae']
         )
         
