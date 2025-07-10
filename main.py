@@ -90,7 +90,20 @@ def main():
         return 1
     
     return 0
-
+    
+def _setup_environment(self):
+    """Setup processing environment."""
+    # Create all required directories
+    directories = [
+        self.config.output_folder,
+        "logs",
+        "plots", 
+        "expert_reviews",
+        "models"
+    ]
+    
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
 
 if __name__ == "__main__":
     exit(main())
