@@ -6,18 +6,30 @@ import numpy as np
 import logging
 from pathlib import Path
 from typing import Union, Tuple, Optional
-from osgeo import gdal
+
 
 from config.config import Config
 from utils.memory_utils import memory_monitor
 
+try:
+    from osgeo import gdal
+    GDAL_AVAILABLE = True
+except ImportError:
+    try:
+        import gdal
+        GDAL_AVAILABLE = True
+    except ImportError:
+        GDAL_AVAILABLE = False
+        logging.warning("GDAL not available - some file formats will not be supported")
 
 class BathymetricProcessor:
-    """Enhanced bathymetric data processor."""
-    
+        """Enhanced bathymetric data processor."""
     def __init__(self, config: Config):
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
+        if not GDAL_AVAILABLE:
+            raise ImportError("GDAL is required but not available")
+
     
     def preprocess_bathymetric_grid(self, file_path: Union[str, Path]) -> Tuple[np.ndarray, Tuple[int, int], Optional[dict]]:
         """Enhanced preprocessing with comprehensive error handling."""
