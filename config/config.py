@@ -15,6 +15,7 @@ class Config:
     input_folder: str = r"\\network_folder\input_bathymetric_files"
     output_folder: str = r"\\network_folder\output_bathymetric_files"
     model_path: str = "cae_model_with_uncertainty.h5"
+    supported_formats: List[str] = field(default_factory=lambda: ['.bag', '.tif', '.tiff', '.asc', '.xyz'])
     
     # Logging
     log_dir: str = f"logs/fit/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
