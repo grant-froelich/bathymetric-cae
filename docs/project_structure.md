@@ -19,6 +19,11 @@ bathymetric_cae/
 │   │   ├── __init__.py               # CLI module initialization
 │   │   └── main.py                   # Main CLI implementation and argument parsing
 │   │
+│   ├── config/                       # Configuration Management
+│   │   ├── __init__.py               # Config module initialization
+│   │   ├── config.py                 # Configuration class with validation
+│   │   └── default_config.json       # Default configuration parameters
+│   │
 │   ├── core/                         # Core Processing Components
 │   │   ├── __init__.py               # Core module initialization
 │   │   ├── processor.py              # Bathymetric data processor
@@ -36,19 +41,13 @@ bathymetric_cae/
 │       ├── __init__.py               # Visualization module initialization
 │       └── visualizer.py             # Comprehensive plotting and analysis
 │
-├── config/                           # Configuration Management (External)
-│   ├── __init__.py                   # Config module initialization
-│   ├── config.py                     # Configuration class with validation
-│   └── default_config.json           # Default configuration parameters
-│
 ├── tests/                            # Test Suite
 │   ├── __init__.py                   # Test package initialization
 │   ├── conftest.py                   # Pytest configuration and fixtures
 │   ├── test_config.py                # Configuration module tests
 │   ├── test_model.py                 # Model architecture tests
 │   ├── test_pipeline.py              # Pipeline integration tests
-│   ├── test_processor.py             # Data processing tests
-│   └── test_documentation.md         # Testing documentation and guidelines
+│   └── test_processor.py             # Data processing tests
 │
 ├── examples/                         # Usage Examples
 │   ├── __init__.py                   # Examples module with metadata
@@ -63,7 +62,8 @@ bathymetric_cae/
 │   ├── installation.md              # Installation guide
 │   ├── quickstart.md                # Quick start guide
 │   ├── usage.md                      # Comprehensive usage guide
-│   └── project_structure.md          # This file
+│   ├── project_structure.md          # This file
+│   └── test_documentation.md         # Testing documentation and guidelines
 │
 └── scripts/                          # Setup and Deployment Scripts
     ├── install_deps.sh               # Dependency installation script
@@ -77,9 +77,9 @@ bathymetric_cae/
 #### **`__init__.py`** - Package Initialization
 - **Purpose**: Defines the public API and package metadata
 - **Key Components**:
-  - Version information and package constants
+  - Version information and package constants (`__version__ = "1.0.0"`)
   - Public API exports for easy importing
-  - Supported file formats definitions
+  - Supported file formats definitions (BAG, GeoTIFF, ASCII Grid, XYZ)
   - Quick start function for immediate usage
 - **Dependencies**: All core modules
 - **Usage**: `from bathymetric_cae import BathymetricCAEPipeline, Config`
@@ -107,8 +107,6 @@ bathymetric_cae/
   - `run_main_pipeline()`: Batch processing execution
 
 ### Configuration Management (`config/`)
-
-**Note**: The configuration module is located at the project root level, separate from the main package.
 
 #### **`config.py`** - Configuration Class
 - **Purpose**: Type-safe configuration management with validation
@@ -282,10 +280,9 @@ bathymetric_cae/
 
 #### **Test Modules** - Comprehensive Testing
 - **`test_config.py`**: Configuration validation and serialization
-- **`test_model.py`**: Model architecture and training functionality
+- **`test_model.py`**: Model architecture and training functionality  
 - **`test_pipeline.py`**: End-to-end pipeline integration
 - **`test_processor.py`**: Data processing and validation
-- **`test_documentation.md`**: Testing documentation, guidelines, and best practices
 
 ### Examples (`examples/`)
 
@@ -316,6 +313,7 @@ bathymetric_cae/
 - **`quickstart.md`**: Rapid introduction and basic usage patterns
 - **`usage.md`**: Comprehensive usage guide with advanced patterns, workflows, and integration examples
 - **`project_structure.md`**: This architectural overview and module documentation
+- **`test_documentation.md`**: Testing documentation, guidelines, and best practices
 
 ### Scripts (`scripts/`)
 
@@ -403,21 +401,41 @@ python -m bathymetric_cae --config custom.json
 ## Quality Assurance
 
 ### Testing Strategy
-- **Unit Tests**: Individual component validation
+- **Unit Tests**: Individual component validation with mocks and fixtures
 - **Integration Tests**: End-to-end workflow verification
 - **Performance Tests**: Memory and speed benchmarking
-- **Regression Tests**: Backward compatibility validation
+- **Conditional Testing**: Environment-specific test execution (TensorFlow, GDAL, GPU)
 
 ### Code Quality
-- **Type Hints**: Comprehensive type annotations
-- **Documentation**: Detailed docstrings and comments
+- **Type Hints**: Comprehensive type annotations throughout
+- **Documentation**: Detailed docstrings and inline comments
 - **Linting**: Code style enforcement
 - **Error Handling**: Robust exception management
 
-### Continuous Integration
-- **Automated Testing**: Multi-platform test execution
-- **Dependency Validation**: Requirements verification
-- **Performance Monitoring**: Benchmark tracking
-- **Documentation Updates**: Automatic doc generation
+### Test Organization
+- **Fixtures**: Centralized test data and environment setup in `conftest.py`
+- **Markers**: Conditional test execution based on available dependencies
+- **Mock Strategy**: Comprehensive mocking of external dependencies
+- **Data Generation**: Synthetic test data for reproducible testing
+
+## Key Design Decisions
+
+### Configuration Management
+- **Location**: Integrated within the main package (`bathymetric_cae/config/`)
+- **Validation**: Comprehensive parameter validation with meaningful error messages
+- **Serialization**: JSON-based with special value handling
+- **Flexibility**: Command-line overrides and programmatic updates
+
+### Package Structure
+- **Self-Contained**: All components within the main package directory
+- **Clear Separation**: Distinct modules for core functionality, utilities, and interfaces
+- **Extensibility**: Easy addition of new formats, models, and utilities
+- **Testing**: Comprehensive test coverage with realistic scenarios
+
+### Error Handling
+- **Graceful Degradation**: System continues operation when individual components fail
+- **Detailed Logging**: Rich error information for debugging
+- **User-Friendly**: Clear error messages with actionable suggestions
+- **Recovery**: Automatic retry and fallback mechanisms
 
 This modular architecture ensures maintainability, testability, and extensibility while providing a comprehensive solution for bathymetric data processing using advanced machine learning techniques. The clear separation of concerns and well-defined interfaces make it easy to understand, extend, and maintain the codebase.
