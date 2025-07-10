@@ -35,50 +35,60 @@ class BathymetricProcessor:
         """Enhanced preprocessing with comprehensive error handling."""
         file_path = Path(file_path)
         ext = file_path.suffix.lower()
-        
+    
         if ext not in self.config.supported_formats:
             raise ValueError(f"Unsupported file format: {ext}")
-        
+    
+        dataset = None  # ✅ Initialize for proper cleanup
         try:
             with memory_monitor(f"Loading {file_path.name}"):
                 dataset = gdal.Open(str(file_path))
                 if dataset is None:
                     raise ValueError(f"Cannot open file: {file_path}")
-                
+            
                 # Get geospatial information
                 geotransform = dataset.GetGeoTransform()
                 projection = dataset.GetProjection()
                 metadata = dataset.GetMetadata()
-                
+            
                 # Process based on file type
                 if ext == ".bag":
                     depth_data, uncertainty_data = self._process_bag_file(dataset)
                 else:
                     depth_data = self._process_standard_file(dataset)
                     uncertainty_data = None
-                
+            
+                # ✅ IMPORTANT: Close dataset immediately after reading
+                dataset = None  # This closes the GDAL dataset
+            
                 # Validate and clean data
                 depth_data = self._validate_and_clean_data(depth_data, file_path)
-                
+            
                 # Prepare input data
                 if uncertainty_data is not None:
                     uncertainty_data = self._validate_and_clean_data(uncertainty_data, file_path, is_uncertainty=True)
                     input_data = self._prepare_multi_channel_input(depth_data, uncertainty_data)
                 else:
                     input_data = self._prepare_single_channel_input(depth_data)
-                
+            
                 # Store metadata
                 geo_metadata = {
                     'geotransform': geotransform,
                     'projection': projection,
                     'metadata': metadata
                 }
-                
+            
                 return input_data, depth_data.shape, geo_metadata
-                
+            
         except Exception as e:
             self.logger.error(f"Error processing {file_path}: {e}")
             raise
+        finally:
+            # ✅ Ensure dataset is always closed
+            if dataset is not None:
+                dataset = None
+            import gc
+            gc.collect()
     
     def _process_bag_file(self, dataset) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """Process BAG file with proper band handling."""
