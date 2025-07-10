@@ -26,10 +26,10 @@ class AdvancedCAE:
         input_layer = layers.Input(shape=input_shape)
         
         # Encoder path
-        encoded = self._build_encoder(input_layer, variant_config)
+        encoded, skip_connections = self._build_encoder(input_layer, variant_config)
         
         # Decoder path
-        decoded = self._build_decoder(encoded, variant_config, input_shape)
+        decoded = self._build_decoder((encoded, skip_connections), variant_config, input_shape)
         
         # Create model
         model = models.Model(input_layer, decoded, name=f"AdvancedCAE_v{variant_config.get('version', 1)}")
