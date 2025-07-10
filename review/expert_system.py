@@ -48,18 +48,23 @@ class ExpertReviewSystem:
         conn.close()
     
     def flag_for_review(self, filename: str, region: Tuple[int, int, int, int], 
-                       flag_type: str, confidence: float):
+                   flag_type: str, confidence: float):
         """Flag a region for expert review."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
         
-        cursor.execute('''
-            INSERT INTO flagged_regions (filename, x_start, y_start, x_end, y_end, flag_type, confidence)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (filename, region[0], region[1], region[2], region[3], flag_type, confidence))
+            cursor.execute('''
+                INSERT INTO flagged_regions (filename, x_start, y_start, x_end, y_end, flag_type, confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (filename, region[0], region[1], region[2], region[3], flag_type, confidence))
         
-        conn.commit()
-        conn.close()
+            conn.commit()
+        except sqlite3.Error as e:
+            logging.error(f"Database error flagging {filename}: {e}")
+        finally:
+            if conn:
+                conn.close()
     
     def get_pending_reviews(self) -> List[Dict]:
         """Get regions pending expert review."""
