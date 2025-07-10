@@ -61,32 +61,43 @@ class BathymetricEnsemble:
         return create_model_variant(self.config, 'advanced', input_shape, variant_config)
     
     def predict_ensemble(self, input_data: np.ndarray, 
-                        adaptive_params: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
+                    adaptive_params: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
         """Make ensemble prediction with adaptive processing."""
         predictions = []
-        
-        for model in self.models:
+    
+        # ✅ MEMORY MANAGEMENT FIXES:
+        for i, model in enumerate(self.models):
             pred = model.predict(input_data, verbose=0)
             predictions.append(pred)
         
+            # Clear model cache periodically
+            if (i + 1) % 2 == 0:
+                tf.keras.backend.clear_session()
+    
         # Weighted ensemble average
         ensemble_pred = np.average(predictions, axis=0, weights=self.weights)
-        
+    
         # Apply constitutional constraints if enabled
         if self.config.enable_constitutional_constraints:
             ensemble_pred = self._apply_constitutional_constraints(
                 input_data, ensemble_pred, adaptive_params
             )
-        
+    
         # Calculate prediction uncertainty
         prediction_std = np.std(predictions, axis=0)
-        
+    
+        # ✅ Clear predictions array immediately after use
+        del predictions
+        import gc
+        gc.collect()
+    
         # Calculate ensemble metrics
         ensemble_metrics = self._calculate_ensemble_metrics(
             input_data, ensemble_pred, prediction_std
         )
-        
+    
         return ensemble_pred, ensemble_metrics
+
     
     def _apply_constitutional_constraints(self, original: np.ndarray, 
                                         prediction: np.ndarray,
