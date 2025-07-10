@@ -159,43 +159,63 @@ class EnhancedBathymetricCAEPipeline:
         return processor.preprocess_bathymetric_grid(file_path)
     
     def _prepare_training_data(self, file_list: List[Path]) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare enhanced training data with adaptive preprocessing."""
+    """Prepare enhanced training data with adaptive preprocessing."""
         all_inputs = []
         all_targets = []
-        
+    
         processor = BathymetricProcessor(self.config)
-        
-        for file_path in file_list:
+    
+        for i, file_path in enumerate(file_list):
             try:
                 input_data, _, _ = processor.preprocess_bathymetric_grid(file_path)
-                
+            
                 # Get adaptive parameters for this data
                 depth_data = input_data[..., 0]
                 adaptive_params = self.adaptive_processor.get_processing_parameters(depth_data)
-                
+            
                 # Apply adaptive preprocessing
                 enhanced_input = self._apply_adaptive_preprocessing(input_data, adaptive_params)
-                
+            
                 noisy_data = np.expand_dims(enhanced_input, axis=0)
                 clean_data = noisy_data[..., :1]  # Use first channel as target
-                
+            
                 all_inputs.append(noisy_data)
                 all_targets.append(clean_data)
-                
+            
+                # ✅ MEMORY MANAGEMENT FIXES:
+                # Clear intermediate variables
+                del input_data, depth_data, enhanced_input, noisy_data, clean_data
+            
+                # Periodic garbage collection every 5 files
+                if (i + 1) % 5 == 0:
+                    import gc
+                    gc.collect()
+                    self.logger.debug(f"Memory cleanup after processing {i + 1} files")
+            
+                # Memory usage warning for large datasets
+                if len(all_inputs) > 50:
+                    self.logger.warning(f"Loading {len(all_inputs)} files in memory - consider batch processing")
+            
                 self.logger.debug(f"Loaded training data from {file_path.name}")
-                
+            
             except Exception as e:
                 self.logger.warning(f"Skipping {file_path.name}: {e}")
                 continue
-        
+    
         if not all_inputs:
             raise ValueError("No valid training data found")
-        
+    
+        # ✅ Final memory optimization
         X_train = np.vstack(all_inputs).astype(np.float32)
         y_train = np.vstack(all_targets).astype(np.float32)
-        
+    
+        # Clear the lists immediately after stacking
+        del all_inputs, all_targets
+        import gc
+        gc.collect()
+    
         self.logger.info(f"Training data shape: {X_train.shape}, Target shape: {y_train.shape}")
-        
+    
         return X_train, y_train
     
     def _apply_adaptive_preprocessing(self, input_data: np.ndarray, 
