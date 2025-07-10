@@ -14,6 +14,7 @@ from core.adaptive_processor import AdaptiveProcessor
 from core.quality_metrics import BathymetricQualityMetrics
 from core.constraints import BathymetricConstraints
 from review.expert_system import ExpertReviewSystem
+from .architectures import create_model_variant
 
 
 class BathymetricEnsemble:
@@ -55,7 +56,6 @@ class BathymetricEnsemble:
     
     def _create_model_variant(self, channels: int, variant_config: Dict) -> tf.keras.Model:
         """Create a model variant with specific configuration."""
-        from .architectures import create_model_variant
         
         input_shape = (self.config.grid_size, self.config.grid_size, channels)
         return create_model_variant(self.config, 'advanced', input_shape, variant_config)
