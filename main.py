@@ -4,6 +4,7 @@ Enhanced Bathymetric CAE Processing - Main Entry Point
 """
 
 import os
+import sys
 import warnings
 import logging
 import tensorflow as tf
@@ -49,7 +50,7 @@ def main():
         
         # Log system information
         logger.info(f"Starting Enhanced Bathymetric CAE Pipeline v2.0")
-        logger.info(f"Python version: {tf.__version__}")
+        logger.info(f"Python version: {sys.version}")
         logger.info(f"TensorFlow version: {tf.__version__}")
         logger.info(f"GPU available: {len(tf.config.list_physical_devices('GPU')) > 0}")
         
