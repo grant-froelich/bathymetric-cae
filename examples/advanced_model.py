@@ -506,4 +506,32 @@ def model_architecture_search():
         "base_filters": [8, 16, 32, 64],
         "kernel_sizes": [(3, 3), (5, 5), (7, 7)],
         "activation": ["relu", "elu", "swish"],
-        "normalization": ["batch", "layer", "
+        "normalization": ["batch", "layer", "instance"],
+        "dropout_rate": [0.0, 0.1, 0.2, 0.3]
+    }
+    
+    for param, values in search_space.items():
+        print(f"  {param}: {values}")
+
+
+def main():
+    """
+    Main function to demonstrate advanced model configuration.
+    """
+    print("Advanced Model Configuration Examples")
+    print("=" * 50)
+    
+    # Run all demonstrations
+    demonstrate_model_architectures()
+    create_custom_architecture_example()
+    demonstrate_training_strategies()
+    implement_transfer_learning_example()
+    demonstrate_model_ensembles()
+    optimize_model_performance()
+    model_architecture_search()
+    
+    print("\nAdvanced model examples completed!")
+
+
+if __name__ == "__main__":
+    main()

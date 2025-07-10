@@ -383,13 +383,27 @@ class TestConfigEdgeCases:
         config.validate()
     
     def test_maximum_reasonable_values(self):
-        """Test configuration with large but reasonable values."""
-        config = Config(
-            epochs=10000,
-            batch_size=1024,
-            validation_split=0.99,
-            grid_size=2048,
-            learning_rate=1.0,
-            base_filters=512,
-            depth=20,
-            dropout_rate
+    """Test configuration with large but reasonable values."""
+    config = Config(
+        epochs=10000,
+        batch_size=1024,
+        validation_split=0.99,
+        grid_size=2048,
+        learning_rate=1.0,
+        base_filters=512,
+        depth=20,
+        dropout_rate=0.99
+    )
+    
+    # Should not raise validation errors for large but valid values
+    config.validate()
+    
+    # Verify the values are set correctly
+    assert config.epochs == 10000
+    assert config.batch_size == 1024
+    assert config.validation_split == 0.99
+    assert config.grid_size == 2048
+    assert config.learning_rate == 1.0
+    assert config.base_filters == 512
+    assert config.depth == 20
+    assert config.dropout_rate == 0.99

@@ -731,3 +731,13 @@ def validate_pipeline_requirements() -> Dict[str, bool]:
     )
     
     return requirements
+    
+    
+def validate_installation():
+    """
+    Validate bathymetric CAE installation and dependencies.
+    
+    Returns:
+        dict: Validation results
+    """
+    return validate_pipeline_requirements()
