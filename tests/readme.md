@@ -1,4 +1,3 @@
-"""
 # Test Suite for Enhanced Bathymetric CAE Processing v2.0
 
 ## Overview
