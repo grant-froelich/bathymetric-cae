@@ -12,7 +12,7 @@ bathymetric-cae --version
 
 # Test dependencies
 python -c "
-import enhanced_bathymetric_cae
+import bathymetric_cae
 import tensorflow as tf
 from osgeo import gdal
 print('✅ All imports successful')
@@ -40,13 +40,13 @@ print('✅ Test data generated')
 **Solutions**:
 ```bash
 # Verify installation
-pip list | grep enhanced-bathymetric-cae
+pip list | grep bathymetric-cae
 
 # Reinstall if missing
-pip install enhanced-bathymetric-cae
+pip install bathymetric-cae
 
 # For development installation
-cd enhanced-bathymetric-cae
+cd bathymetric-cae
 pip install -e .
 ```
 
@@ -508,7 +508,7 @@ config = Config(auto_flag_threshold=0.4)  # Default: 0.5
 pip install -r tests/requirements-test.txt
 
 # Run from project root
-cd enhanced-bathymetric-cae
+cd bathymetric-cae
 python -m pytest tests/
 ```
 
@@ -556,7 +556,7 @@ source clean_env/bin/activate  # Linux/macOS
 # or clean_env\Scripts\activate  # Windows
 
 # Install fresh
-pip install enhanced-bathymetric-cae
+pip install bathymetric-cae
 
 # Check for conflicts
 pip check
@@ -567,12 +567,12 @@ pip check
 **Solutions**:
 ```bash
 # Install in user directory
-pip install --user enhanced-bathymetric-cae
+pip install --user bathymetric-cae
 
 # Or use virtual environment
 python -m venv venv
 source venv/bin/activate
-pip install enhanced-bathymetric-cae
+pip install bathymetric-cae
 ```
 
 ### System Resources
@@ -622,10 +622,6 @@ bathymetric-cae --input test_data --output test_output --epochs 2 --batch-size 1
    - [GitHub Issues](https://github.com/your-org/enhanced-bathymetric-cae/issues)
    - [Discord Community](https://discord.gg/bathymetric-cae)
    - [Stack Overflow](https://stackoverflow.com/questions/tagged/bathymetric-cae)
-
-3. **Professional Support**:
-   - Email: support@bathymetric-cae.org
-   - Enterprise support available
 
 ### Issue Reporting Template
 
@@ -688,7 +684,3 @@ Any other relevant information.
 5. **Read Logs**: Check log files for detailed error information
 6. **Keep Updated**: Use latest stable versions
 7. **Document Problems**: Keep notes for reproducing issues
-
----
-
-**Still having issues?** Check our [FAQ](../reference/faq.md) or [contact support](https://community.bathymetric-cae.org).
