@@ -740,17 +740,3 @@ def test_bug_fix_regression():
 8. **Use factories** for complex test data
 9. **Document test purpose** and expectations
 10. **Clean up resources** properly
-
----
-
-<div align="center">
-
-**🧪 Professional Testing for Professional Software 🌊**
-
-*Ensuring reliability, performance, and quality in bathymetric data processing*
-
-[![Test Suite](https://img.shields.io/badge/Test%20Suite-v2.0-green.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-85%25+-brightgreen.svg)](htmlcov/)
-[![Quality](https://img.shields.io/badge/Quality-Assured-blue.svg)](test-summary.json)
-
-</div>
