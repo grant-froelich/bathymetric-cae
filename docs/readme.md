@@ -255,13 +255,6 @@ We continuously improve our documentation based on:
 
 **Help us improve**: Rate pages, suggest edits, or contribute new content!
 
----
-
-<div align="center">
-
-**🌊 Professional Documentation for Professional Software 📚**
-
-*Comprehensive, accurate, and user-friendly documentation for the Enhanced Bathymetric CAE Processing system*
 
 [![Documentation](https://img.shields.io/badge/Docs-Latest-blue.svg)](https://docs.bathymetric-cae.org)
 [![Version](https://img.shields.io/badge/Version-v2.0-green.svg)](changelog/README.md)
