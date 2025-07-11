@@ -1,0 +1,200 @@
+# docker-compose.yml
+# Enhanced Bathymetric CAE Processing with conda-based GDAL support
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Main processing service (CPU)
+  # =============================================================================
+  bathymetric-cae:
+    build:
+      context: .
+      dockerfile: Dockerfile.conda
+      target: production
+    image: bathymetric-cae:latest
+    container_name: bathymetric-cae-processor
+    volumes:
+      # Mount data directories
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./plots:/app/plots
+      - ./expert_reviews:/app/expert_reviews
+      # Mount models for persistence
+      - ./models:/app/models
+    environment:
+      # GDAL optimization
+      - GDAL_CACHEMAX=2048
+      - GDAL_NUM_THREADS=ALL_CPUS
+      - GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
+      
+      # TensorFlow settings
+      - TF_CPP_MIN_LOG_LEVEL=2
+      - TF_FORCE_GPU_ALLOW_GROWTH=true
+      
+      # Processing settings
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+    command: >
+      bathymetric-cae 
+      --input /app/data 
+      --output /app/output 
+      --enable-adaptive 
+      --enable-expert-review
+      --enable-constitutional
+      --epochs 100
+      --ensemble-size 3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from osgeo import gdal; import enhanced_bathymetric_cae"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =============================================================================
+  # GPU-accelerated processing service
+  # =============================================================================
+  bathymetric-cae-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.conda
+      target: gpu-base
+    image: bathymetric-cae:gpu
+    container_name: bathymetric-cae-gpu
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # GDAL optimization
+      - GDAL_CACHEMAX=4096
+      - GDAL_NUM_THREADS=ALL_CPUS
+      # GPU-specific TensorFlow settings
+      - TF_FORCE_GPU_ALLOW_GROWTH=true
+      - TF_GPU_ALLOCATOR=cuda_malloc_async
+    volumes:
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./plots:/app/plots
+      - ./expert_reviews:/app/expert_reviews
+      - ./models:/app/models
+    command: >
+      bathymetric-cae 
+      --input /app/data 
+      --output /app/output 
+      --enable-adaptive 
+      --enable-expert-review
+      --epochs 200
+      --ensemble-size 5
+      --batch-size 16
+    profiles:
+      - gpu
+    restart: unless-stopped
+
+  # =============================================================================
+  # Development/testing service
+  # =============================================================================
+  bathymetric-cae-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.conda
+      target: development
+    image: bathymetric-cae:dev
+    container_name: bathymetric-cae-dev
+    volumes:
+      # Mount source code for live development
+      - .:/app
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./test_data:/app/test_data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GDAL_CACHEMAX=1024
+      - TF_CPP_MIN_LOG_LEVEL=2
+    working_dir: /app
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev
+
+  # =============================================================================
+  # Testing service
+  # =============================================================================
+  bathymetric-cae-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.conda
+      target: testing
+    image: bathymetric-cae:test
+    container_name: bathymetric-cae-test
+    volumes:
+      - ./test_reports:/app/test_reports
+      - ./htmlcov:/app/htmlcov
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "tests/run_tests_advanced.py", "--category", "all", "--verbose"]
+    profiles:
+      - test
+
+  # =============================================================================
+  # Jupyter notebook service for analysis
+  # =============================================================================
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.conda
+      target: development
+    image: bathymetric-cae:jupyter
+    container_name: bathymetric-cae-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./notebooks:/app/notebooks
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=bathymetric-cae
+    command: >
+      bash -c "
+      conda run -n bathymetric-cae pip install jupyterlab &&
+      conda run -n bathymetric-cae jupyter lab 
+      --ip=0.0.0.0 
+      --port=8888 
+      --no-browser 
+      --allow-root 
+      --notebook-dir=/app
+      "
+    profiles:
+      - jupyter
+
+# =============================================================================
+# Networks and volumes
+# =============================================================================
+networks:
+  default:
+    name: bathymetric-cae-network
+
+volumes:
+  # Persistent model storage
+  models:
+    driver: local
+  
+  # Persistent output storage
+  output:
+    driver: local
+    
+  # Logs storage
+  logs:
+    driver: local
+
+# =============================================================================
+# Development overrides
+# =============================================================================
+# Use: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+# Create docker-compose.override.yml for local customizations
