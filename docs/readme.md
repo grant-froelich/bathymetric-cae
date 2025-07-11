@@ -153,27 +153,6 @@ Practical examples and use cases.
 3. Explore [Quality Assessment](technical/quality-assessment.md)
 4. Check [Bibliography](reference/bibliography.md)
 
-## 🔍 Search and Navigation
-
-### Documentation Website
-Visit our documentation website at: **[docs.bathymetric-cae.org](https://docs.bathymetric-cae.org)**
-
-Features:
-- **Full-text search** across all documentation
-- **Interactive navigation** with breadcrumbs
-- **Mobile-responsive** design
-- **Dark/light mode** toggle
-- **Multi-language** support (English, Spanish, French, Portuguese)
-
-### Offline Documentation
-Generate offline documentation:
-```bash
-cd docs
-pip install -r requirements.txt
-mkdocs build
-# Open site/index.html in browser
-```
-
 ## 📋 Documentation Standards
 
 ### Writing Guidelines
@@ -223,27 +202,10 @@ See our [Contributing Guide](contributing/README.md) for detailed instructions.
 ## 📞 Getting Help
 
 ### Documentation Issues
-- **Report bugs** in documentation: [GitHub Issues](https://github.com/your-repo/enhanced-bathymetric-cae/issues)
-- **Request improvements**: [GitHub Discussions](https://github.com/your-repo/enhanced-bathymetric-cae/discussions)
-- **Ask questions**: [Community Forum](https://community.bathymetric-cae.org)
-
-### Community Support
-- **Discord**: [Join our Discord](https://discord.gg/bathymetric-cae)
-- **Slack**: [Workspace](https://bathymetric-cae.slack.com)
-- **Email**: documentation@bathymetric-cae.org
-
-### Professional Support
-- **Consulting**: Available for enterprise users
-- **Training**: Custom training sessions
-- **Integration**: Professional integration services
+- **Report bugs** in documentation: [GitHub Issues](https://github.com/noaa-ocs-hydrography/bathymetric-cae/issues)
+- **Request improvements**: [GitHub Discussions](https://github.com/noaa-ocs-hydrography/bathymetric-cae/discussions)
 
 ## 📈 Documentation Metrics
-
-Our documentation aims for:
-- **95%+ User Satisfaction** based on feedback
-- **< 5 minutes** to complete basic tasks
-- **100% Link Accuracy** with automated checking
-- **Multi-language Support** for global accessibility
 
 ## 🎯 Feedback and Improvement
 
@@ -254,10 +216,5 @@ We continuously improve our documentation based on:
 - **Regular review** by technical writers
 
 **Help us improve**: Rate pages, suggest edits, or contribute new content!
-
-
-[![Documentation](https://img.shields.io/badge/Docs-Latest-blue.svg)](https://docs.bathymetric-cae.org)
-[![Version](https://img.shields.io/badge/Version-v2.0-green.svg)](changelog/README.md)
-[![License](https://img.shields.io/badge/License-MIT-orange.svg)](../LICENSE)
 
 </div>
