@@ -1,4 +1,3 @@
-# tests/README.md
 """
 # Test Suite for Enhanced Bathymetric CAE Processing v2.0
 
