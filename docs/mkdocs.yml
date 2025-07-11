@@ -1,0 +1,347 @@
+# mkdocs.yml - Documentation site configuration
+
+# Site Information
+site_name: Enhanced Bathymetric CAE Processing
+site_description: Advanced bathymetric data processing using ensemble Convolutional Autoencoders
+site_author: Enhanced Bathymetric CAE Team
+site_url: https://docs.bathymetric-cae.org
+
+# Repository Information
+repo_name: enhanced-bathymetric-cae
+repo_url: https://github.com/your-org/enhanced-bathymetric-cae
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024 Enhanced Bathymetric CAE Team
+
+# Theme Configuration
+theme:
+  name: material
+  custom_dir: assets/overrides
+  
+  # Theme Features
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.action.view
+    - announce.dismiss
+    
+  # Color Palette
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  # Typography
+  font:
+    text: Roboto
+    code: Roboto Mono
+  
+  # Logo and Favicon
+  logo: assets/images/logo.png
+  favicon: assets/images/favicon.ico
+  
+  # Language
+  language: en
+
+# Navigation Structure
+nav:
+  - Home: index.md
+  
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Basic Usage: getting-started/basic-usage.md
+    - Configuration: getting-started/configuration.md
+    - Troubleshooting: getting-started/troubleshooting.md
+  
+  - User Guide:
+    - user-guide/index.md
+    - Overview: user-guide/overview.md
+    - File Formats: user-guide/file-formats.md
+    - Seafloor Types: user-guide/seafloor-types.md
+    - Quality Metrics: user-guide/quality-metrics.md
+    - Adaptive Processing: user-guide/adaptive-processing.md
+    - Expert Review: user-guide/expert-review.md
+    - Batch Processing: user-guide/batch-processing.md
+    - Performance Tuning: user-guide/performance-tuning.md
+    - Best Practices: user-guide/best-practices.md
+  
+  - Technical:
+    - technical/index.md
+    - Architecture: technical/architecture.md
+    - Algorithms: technical/algorithms.md
+    - Model Architectures: technical/model-architectures.md
+    - Ensemble Methods: technical/ensemble-methods.md
+    - Constitutional AI: technical/constitutional-ai.md
+    - Data Processing: technical/data-processing.md
+    - Quality Assessment: technical/quality-assessment.md
+    - Performance Analysis: technical/performance-analysis.md
+  
+  - API Reference:
+    - api/index.md
+    - Configuration: api/config.md
+    - Core Modules: api/core.md
+    - Models: api/models.md
+    - Processing: api/processing.md
+    - Review System: api/review.md
+    - Utilities: api/utils.md
+    - CLI: api/cli.md
+  
+  - Testing:
+    - testing/index.md
+    - Testing Guide: testing/testing-guide.md
+    - Test Structure: testing/test-structure.md
+    - Writing Tests: testing/writing-tests.md
+    - Running Tests: testing/running-tests.md
+    - Test Data: testing/test-data.md
+    - Mocking: testing/mocking.md
+    - Performance Testing: testing/performance-testing.md
+    - CI/CD: testing/ci-cd.md
+  
+  - Deployment:
+    - deployment/index.md
+    - Environment Setup: deployment/environment-setup.md
+    - Docker: deployment/docker.md
+    - Cloud Deployment: deployment/cloud-deployment.md
+    - Scaling: deployment/scaling.md
+    - Monitoring: deployment/monitoring.md
+    - Backup & Recovery: deployment/backup-recovery.md
+    - Security: deployment/security.md
+  
+  - Contributing:
+    - contributing/index.md
+    - Development Setup: contributing/development-setup.md
+    - Coding Standards: contributing/coding-standards.md
+    - Git Workflow: contributing/git-workflow.md
+    - Pull Requests: contributing/pull-requests.md
+    - Issue Templates: contributing/issue-templates.md
+    - Release Process: contributing/release-process.md
+    - Community: contributing/community.md
+  
+  - Tutorials:
+    - tutorials/index.md
+    - First Processing Job: tutorials/first-processing-job.md
+    - Custom Configurations: tutorials/custom-configurations.md
+    - Quality Analysis: tutorials/quality-analysis.md
+    - Expert Review Workflow: tutorials/expert-review-workflow.md
+    - Batch Automation: tutorials/batch-automation.md
+    - Advanced Features: tutorials/advanced-features.md
+    - Integration Examples: tutorials/integration-examples.md
+  
+  - Examples:
+    - examples/index.md
+    - Basic Examples: examples/basic-examples/
+    - Advanced Examples: examples/advanced-examples/
+    - Integration Examples: examples/integration-examples/
+    - Custom Workflows: examples/custom-workflows/
+    - Sample Data: examples/sample-data/
+  
+  - Reference:
+    - reference/index.md
+    - Configuration Reference: reference/configuration-reference.md
+    - Command Reference: reference/command-reference.md
+    - Error Codes: reference/error-codes.md
+    - File Format Specs: reference/file-formats-spec.md
+    - Quality Metrics Spec: reference/quality-metrics-spec.md
+    - IHO Standards: reference/iho-standards.md
+    - Glossary: reference/glossary.md
+    - Bibliography: reference/bibliography.md
+  
+  - Changelog:
+    - changelog/index.md
+    - Release Notes: changelog/CHANGELOG.md
+    - Migration Guides: changelog/migration-guides/
+    - Breaking Changes: changelog/breaking-changes.md
+
+# Plugins
+plugins:
+  # Search
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+      
+  # Git integration
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      fallback_to_build_date: true
+      
+  # Social cards
+  - social:
+      cards_layout_options:
+        color: "#1976d2"
+        
+  # Minification
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      
+  # Auto-generation
+  - gen-files:
+      scripts:
+        - docs/scripts/gen_api_docs.py
+        
+  # Navigation
+  - awesome-pages
+  
+  # Code highlighting
+  - pymdownx.tilde
+
+# Extra CSS and JavaScript
+extra_css:
+  - assets/stylesheets/extra.css
+  - assets/stylesheets/custom.css
+
+extra_javascript:
+  - assets/javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - assets/javascripts/custom.js
+
+# Extra Configuration
+extra:
+  # Version
+  version:
+    provider: mike
+    default: stable
+    
+  # Social Links
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/enhanced-bathymetric-cae
+      name: GitHub Repository
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/bathymetric-cae
+      name: Discord Community
+    - icon: fontawesome/brands/slack
+      link: https://bathymetric-cae.slack.com
+      name: Slack Workspace
+    - icon: fontawesome/solid/envelope
+      link: mailto:support@bathymetric-cae.org
+      name: Email Support
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/bathymetric_cae
+      name: Twitter Updates
+      
+  # Analytics
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/thumb-up-outline
+          name: This page was helpful
+          data: 1
+          note: >-
+            Thanks for your feedback!
+        - icon: material/thumb-down-outline
+          name: This page could be improved
+          data: 0
+          note: >-
+            Thanks for your feedback! Help us improve this page by
+            <a href="https://github.com/your-org/enhanced-bathymetric-cae/issues/new/?title=[Docs]+{title}+-+{url}" target="_blank" rel="noopener">telling us what you found helpful or what could be improved</a>.
+            
+  # Internationalization
+  alternate:
+    - name: English
+      link: /en/
+      lang: en
+    - name: Español
+      link: /es/
+      lang: es
+    - name: Français
+      link: /fr/
+      lang: fr
+    - name: Português
+      link: /pt/
+      lang: pt
+
+# Validation
+validation:
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+# Watch for changes
+watch:
+  - ../downx.highlight
+  - pymdownx.superfences
+  
+  # Diagrams
+  - mermaid2
+
+# Markdown Extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      title: Table of Contents
+      
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: your-org
+      repo: enhanced-bathymetric-cae
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pym
