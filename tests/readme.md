@@ -350,41 +350,6 @@ def test_expert_review_system():
         assert len(reviews) == 1
 ```
 
-## 📈 Performance Testing and Monitoring
-
-### Performance Benchmarks
-
-```python
-# Benchmark model inference speed
-def test_model_inference_performance(benchmark):
-    model = create_test_model()
-    test_data = create_test_data((10, 64, 64, 1))
-    
-    # Benchmark inference
-    result = benchmark(model.predict, test_data, verbose=0)
-    assert result.shape == test_data.shape
-
-# Monitor memory usage
-def test_memory_usage():
-    with PerformanceMonitor().monitor() as monitor:
-        # Memory-intensive operation
-        process_large_dataset()
-    
-    results = monitor.get_results()
-    assert results['max_memory_mb'] < 2000  # 2GB limit
-```
-
-### Performance Thresholds
-
-| Metric | Threshold | Test Level |
-|--------|-----------|------------|
-| **Unit Test Speed** | < 30 seconds per test | Individual |
-| **Integration Test Speed** | < 5 minutes per test | Individual |
-| **Total Suite Time** | < 10 minutes | Suite |
-| **Memory Usage** | < 2GB during testing | Suite |
-| **Model Inference** | < 5 seconds for 10 samples | Performance |
-| **Data Processing** | < 10 seconds per file | Performance |
-
 ## 📋 Quality Assurance and Reporting
 
 ### Test Reports Generated
