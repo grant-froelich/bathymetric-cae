@@ -7,6 +7,7 @@ import os
 import sys
 import warnings
 import logging
+from pathlib import Path
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import Policy
 
@@ -75,6 +76,9 @@ def main():
         output_folder = args.output or config.output_folder
         model_path = args.model or config.model_path
         
+        # Setup environment
+        _setup_environment(config)
+        
         # Create and run enhanced pipeline
         pipeline = EnhancedBathymetricCAEPipeline(config)
         pipeline.run(input_folder, output_folder, model_path)
@@ -90,12 +94,13 @@ def main():
         return 1
     
     return 0
-    
-def _setup_environment(self):
+
+
+def _setup_environment(config):
     """Setup processing environment."""
     # Create all required directories
     directories = [
-        self.config.output_folder,
+        config.output_folder,
         "logs",
         "plots", 
         "expert_reviews",
@@ -104,6 +109,7 @@ def _setup_environment(self):
     
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
+
 
 if __name__ == "__main__":
     exit(main())
