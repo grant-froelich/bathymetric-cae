@@ -1,0 +1,32 @@
+# tests/requirements-test.txt
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-html>=3.1.0
+pytest-mock>=3.10.0
+pytest-xdist>=3.0.0  # For parallel testing
+
+# Performance testing
+pytest-benchmark>=4.0.0
+memory-profiler>=0.60.0
+pytest-memray>=1.0.0
+
+# Code quality
+flake8>=5.0.0
+black>=22.0.0
+isort>=5.0.0
+
+# Additional testing utilities
+hypothesis>=6.0.0  # Property-based testing
+factory-boy>=3.2.0  # Test data factories
+responses>=0.20.0  # Mock HTTP requests
+freezegun>=1.2.0  # Time mocking
+
+# Coverage and reporting
+coverage[toml]>=6.0.0
+codecov>=2.1.0
+
+# Optional development tools
+jupyter>=1.0.0
+ipython>=8.0.0

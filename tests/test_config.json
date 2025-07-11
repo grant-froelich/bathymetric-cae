@@ -1,0 +1,82 @@
+{
+  "coverage_threshold": 85.0,
+  "performance_thresholds": {
+    "test_execution_time": 300.0,
+    "individual_test_time": 30.0,
+    "memory_usage_mb": 2000,
+    "model_inference_time": 5.0,
+    "data_processing_time": 10.0
+  },
+  "test_categories": {
+    "unit": {
+      "pattern": "test_*.py",
+      "exclude": ["test_integration.py", "test_performance.py"],
+      "markers": ["unit"],
+      "description": "Fast, isolated unit tests"
+    },
+    "integration": {
+      "pattern": "test_integration.py",
+      "markers": ["integration"],
+      "description": "End-to-end integration tests"
+    },
+    "performance": {
+      "pattern": "test_performance.py", 
+      "markers": ["performance"],
+      "description": "Performance and benchmark tests"
+    }
+  },
+  "quality_gates": {
+    "minimum_success_rate": 95.0,
+    "maximum_performance_warnings": 5,
+    "maximum_memory_usage_mb": 4000,
+    "maximum_execution_time": 600.0
+  },
+  "reporting": {
+    "generate_html": true,
+    "generate_junit": true,
+    "generate_coverage": true,
+    "generate_performance_report": true,
+    "generate_failure_analysis": true,
+    "send_notifications": false,
+    "notification_webhook": null
+  },
+  "environment": {
+    "required_python_version": "3.8",
+    "required_packages": [
+      "tensorflow>=2.13.0",
+      "numpy>=1.21.0",
+      "gdal>=3.4.0",
+      "pytest>=7.0.0"
+    ],
+    "optional_packages": [
+      "pytest-xdist",
+      "pytest-cov", 
+      "pytest-html",
+      "pytest-benchmark"
+    ]
+  },
+  "test_data": {
+    "generate_on_demand": true,
+    "cache_test_data": true,
+    "test_data_size": "small",
+    "cleanup_after_tests": false
+  },
+  "parallel_execution": {
+    "default_workers": "auto",
+    "max_workers": 8,
+    "categories_parallel": ["unit"],
+    "categories_sequential": ["integration", "performance"]
+  },
+  "failure_analysis": {
+    "categorize_failures": true,
+    "generate_stack_traces": true,
+    "capture_screenshots": false,
+    "save_failure_artifacts": true
+  },
+  "continuous_integration": {
+    "fail_fast": false,
+    "retry_failed_tests": 1,
+    "timeout_minutes": 30,
+    "artifact_retention_days": 7
+  }
+}

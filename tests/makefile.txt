@@ -1,0 +1,118 @@
+# Makefile
+
+.PHONY: test test-unit test-integration test-performance test-coverage clean-test
+
+# Python and pytest configuration
+PYTHON := python3
+PYTEST := pytest
+PYTEST_ARGS := -v --tb=short --strict-markers
+
+# Test directories
+TEST_DIR := tests
+UNIT_TESTS := $(TEST_DIR)/test_*.py
+INTEGRATION_TESTS := $(TEST_DIR)/test_integration.py
+PERFORMANCE_TESTS := $(TEST_DIR)/test_performance.py
+
+# Coverage configuration
+COV_ARGS := --cov=config --cov=core --cov=models --cov=processing --cov=review --cov=utils
+COV_REPORT := --cov-report=html:htmlcov --cov-report=term-missing --cov-report=xml
+
+# Default test target
+test: test-unit test-integration
+
+# Run all unit tests
+test-unit:
+	@echo "Running unit tests..."
+	$(PYTEST) $(UNIT_TESTS) $(PYTEST_ARGS)
+
+# Run integration tests
+test-integration:
+	@echo "Running integration tests..."
+	$(PYTEST) $(INTEGRATION_TESTS) $(PYTEST_ARGS)
+
+# Run performance tests
+test-performance:
+	@echo "Running performance tests..."
+	$(PYTEST) $(PERFORMANCE_TESTS) $(PYTEST_ARGS) -m "not slow"
+
+# Run all tests with coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) $(COV_ARGS) $(COV_REPORT)
+
+# Run tests and generate reports
+test-reports:
+	@echo "Running tests with reports..."
+	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) $(COV_ARGS) $(COV_REPORT) \
+		--junitxml=test_results.xml \
+		--html=test_report.html --self-contained-html
+
+# Run specific test file
+test-file:
+	@echo "Usage: make test-file FILE=test_filename.py"
+	$(PYTEST) $(TEST_DIR)/$(FILE) $(PYTEST_ARGS) -v
+
+# Generate test data
+test-data:
+	@echo "Generating test data..."
+	$(PYTHON) -c "from tests.test_fixtures.sample_data_generator import TestDataGenerator; \
+		from pathlib import Path; \
+		TestDataGenerator.create_test_dataset(Path('test_data'), 10)"
+
+# Clean test artifacts
+clean-test:
+	@echo "Cleaning test artifacts..."
+	rm -rf htmlcov/
+	rm -rf .coverage
+	rm -rf .pytest_cache/
+	rm -rf test_results.xml
+	rm -rf test_report.html
+	rm -rf test_data/
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+
+# Setup test environment
+setup-test:
+	@echo "Setting up test environment..."
+	pip install pytest pytest-cov pytest-html pytest-mock
+	mkdir -p logs plots expert_reviews test_data
+
+# Run tests in parallel
+test-parallel:
+	@echo "Running tests in parallel..."
+	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) -n auto
+
+# Run tests with memory profiling
+test-memory:
+	@echo "Running tests with memory profiling..."
+	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) --memray
+
+# Lint test code
+lint-tests:
+	@echo "Linting test code..."
+	flake8 $(TEST_DIR)
+	black --check $(TEST_DIR)
+
+# Format test code
+format-tests:
+	@echo "Formatting test code..."
+	black $(TEST_DIR)
+	isort $(TEST_DIR)
+
+# Help target
+help:
+	@echo "Available test targets:"
+	@echo "  test              - Run unit and integration tests"
+	@echo "  test-unit         - Run only unit tests"
+	@echo "  test-integration  - Run only integration tests"
+	@echo "  test-performance  - Run performance tests"
+	@echo "  test-coverage     - Run tests with coverage report"
+	@echo "  test-reports      - Run tests and generate all reports"
+	@echo "  test-file         - Run specific test file (use FILE=filename)"
+	@echo "  test-data         - Generate test data"
+	@echo "  test-parallel     - Run tests in parallel"
+	@echo "  test-memory       - Run tests with memory profiling"
+	@echo "  clean-test        - Clean test artifacts"
+	@echo "  setup-test        - Setup test environment"
+	@echo "  lint-tests        - Lint test code"
+	@echo "  format-tests      - Format test code"
