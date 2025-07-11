@@ -3,6 +3,7 @@ Command line interface for Enhanced Bathymetric CAE Processing.
 """
 
 import argparse
+import logging
 from config.config import Config
 
 
