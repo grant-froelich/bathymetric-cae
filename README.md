@@ -34,31 +34,226 @@ Advanced bathymetric grid processing using ensemble Convolutional Autoencoders w
 ## 🚀 Installation
 
 ### Prerequisites
-- Python 3.8+
-- GDAL system libraries
-- CUDA-capable GPU (optional, recommended for training)
+- **Operating System**: Windows 10+, macOS 10.15+, or Linux (Ubuntu 18.04+)
+- **Python**: 3.8-3.11
+- **RAM**: 8 GB minimum (16 GB recommended)
+- **Storage**: 10 GB free space
+- **Conda**: Miniconda or Anaconda (strongly recommended for GDAL)
 
-### Quick Install
+### Recommended Installation (Conda)
+
+The **conda installation is strongly recommended** for reliable GDAL support and dependency management.
+
+#### Step 1: Install Conda
+If you don't have conda installed:
+- **Miniconda** (minimal): https://docs.conda.io/en/latest/miniconda.html
+- **Anaconda** (full): https://www.anaconda.com/products/distribution
+
+#### Step 2: Create Environment and Install
 ```bash
+# Clone the repository
 git clone https://github.com/noaa-ocs-hydrography/bathymetric-cae.git
-cd bathymetric-cae
-pip install -r requirements.txt
-```
+cd enhanced-bathymetric-cae
 
-### Development Install with Testing
-```bash
+# Create conda environment (includes GDAL and dependencies)
+conda env create -f environment.yml
+
+# Activate environment
+conda activate bathymetric-cae
+
+# Install the package
 pip install -e .
+
+# Verify installation
+bathymetric-cae --version
+python -c "from osgeo import gdal; print(f'GDAL {gdal.__version__} ready!')"
+```
+
+#### Step 3: Quick Test
+```bash
+# Generate test data and run basic processing
+python -c "
+from tests.test_fixtures.sample_data_generator import TestDataGenerator
+from pathlib import Path
+TestDataGenerator.create_test_dataset(Path('test_data'), 2)
+print('✅ Test data generated successfully')
+"
+
+# Run quick test
+bathymetric-cae --input test_data --output test_output --epochs 2 --ensemble-size 1
+```
+
+### Alternative: pip Installation (Limited Support)
+
+⚠️ **Warning**: pip installation may encounter GDAL dependency issues. Use conda method above for best results.
+
+#### For Advanced Users Only
+```bash
+# Install system GDAL first (varies by platform)
+# Ubuntu/Debian: sudo apt install gdal-bin libgdal-dev
+# macOS: brew install gdal  
+# Windows: Not recommended - use conda instead
+
+# Install package
+pip install enhanced-bathymetric-cae
+
+# Verify (may fail with pip installation)
+python -c "from osgeo import gdal; print('GDAL OK')"
+```
+
+### Development Installation
+
+For contributors and developers:
+
+```bash
+# Clone repository
+git clone https://github.com/noaa-ocs-hydrography/bathymetric-cae.git
+cd enhanced-bathymetric-cae
+
+# Create development environment
+conda env create -f environment.yml
+conda activate bathymetric-cae
+
+# Install in development mode
+pip install -e .
+
+# Install additional test dependencies (if not in environment.yml)
 pip install -r tests/requirements-test.txt
+
+# Verify development setup
+python tests/run_tests_advanced.py --quick
 ```
 
-### GPU Support (Recommended)
+### Docker Installation
+
+For containerized deployment:
+
 ```bash
-pip install tensorflow[and-cuda]
+# Using conda-based Dockerfile
+docker build -f Dockerfile.conda -t bathymetric-cae .
+
+# Run with sample data
+docker run -it --rm \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/output:/app/output \
+    bathymetric-cae \
+    bathymetric-cae --input /app/data --output /app/output
 ```
 
-### Optional Hydrographic Tools
+### Platform-Specific Notes
+
+#### Windows
+- **Strongly recommend conda** - pip GDAL installation is very difficult on Windows
+- Use Anaconda Prompt or PowerShell with conda in PATH
+- Ensure Visual Studio Build Tools are installed if compiling from source
+
+#### macOS
 ```bash
-pip install pyproj rasterio fiona geopandas
+# Install conda via Homebrew (optional)
+brew install miniconda
+
+# Or download directly from conda website
+# Then follow conda installation steps above
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Install miniconda
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+
+# Follow conda installation steps above
+```
+
+### GPU Support
+
+For CUDA GPU acceleration:
+
+```bash
+# During conda environment creation, or after:
+conda activate bathymetric-cae
+
+# Install GPU-enabled TensorFlow
+pip uninstall tensorflow
+pip install tensorflow[and-cuda]>=2.13.0
+
+# Verify GPU detection
+python -c "
+import tensorflow as tf
+print('GPUs available:', len(tf.config.list_physical_devices('GPU')))
+"
+```
+
+### Troubleshooting Installation
+
+#### Common GDAL Issues
+
+**Problem**: `ImportError: No module named 'osgeo'`
+```bash
+# Solution: Use conda installation
+conda activate bathymetric-cae
+conda install -c conda-forge gdal --force-reinstall
+```
+
+**Problem**: `GDAL version mismatch`
+```bash
+# Solution: Ensure consistent conda environment
+conda activate bathymetric-cae
+conda update --all
+```
+
+**Problem**: `Memory errors during installation`
+```bash
+# Solution: Close other applications and try:
+conda env create -f environment.yml --force
+```
+
+#### Verification Script
+
+Test your installation:
+
+```bash
+# Save as test_installation.py
+python << 'EOF'
+#!/usr/bin/env python3
+"""Test installation completeness."""
+
+def test_imports():
+    """Test critical imports."""
+    try:
+        # Test GDAL
+        from osgeo import gdal, ogr, osr
+        print(f"✅ GDAL {gdal.__version__}")
+        
+        # Test core packages  
+        import tensorflow as tf
+        print(f"✅ TensorFlow {tf.__version__}")
+        
+        import numpy as np
+        print(f"✅ NumPy {np.__version__}")
+        
+        # Test package import
+        import enhanced_bathymetric_cae
+        print("✅ Enhanced Bathymetric CAE package")
+        
+        # Test GPU (optional)
+        gpus = tf.config.list_physical_devices('GPU')
+        print(f"✅ GPUs available: {len(gpus)}")
+        
+        return True
+        
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        return False
+
+if __name__ == "__main__":
+    success = test_imports()
+    if success:
+        print("\n🎉 Installation verification successful!")
+    else:
+        print("\n❌ Installation verification failed!")
+        print("Try: conda env create -f environment.yml --force")
+EOF
 ```
 
 ## 🏃‍♂️ Quick Start
@@ -170,9 +365,10 @@ View test results and coverage reports in GitHub Actions artifacts.
 ```
 enhanced_bathymetric_cae/
 ├── 📋 README.md                    # This file
-├── 📦 requirements.txt             # Dependencies
+├── 📦 requirements.txt             # Pip dependencies (conda preferred)
+├── 📦 environment.yml              # Conda environment (recommended)
 ├── ⚙️ setup.py                     # Package installation
-├── 🔧 Makefile                     # Test automation commands
+├── 🔧 Makefile                     # Build and test automation
 │
 ├── 🔧 config/                      # Configuration management
 │   ├── __init__.py
@@ -226,6 +422,9 @@ enhanced_bathymetric_cae/
 │   │
 │   ├── run_tests_advanced.py       # Advanced test runner
 │   └── test_automation.sh          # Test automation script
+│
+├── 🐳 Dockerfile.conda             # Conda-based Docker image
+├── 🐳 docker-compose.yml           # Container orchestration
 │
 └── 🎯 main.py                      # Application entry point
 ```
@@ -356,8 +555,12 @@ python main.py --ensemble-size 7 --epochs 300 --quality-threshold 0.85
 ### Setting Up Development Environment
 ```bash
 git clone https://github.com/noaa-ocs-hydrography/bathymetric-cae.git
-cd bathymetric-cae
-pip install -e ".[dev]"
+cd enhanced-bathymetric-cae
+
+# Use conda for reliable GDAL support
+conda env create -f environment.yml
+conda activate bathymetric-cae
+pip install -e .
 
 # Install testing dependencies
 pip install -r tests/requirements-test.txt
@@ -387,129 +590,16 @@ pytest tests/ -n auto
 ### Code Quality Checks
 ```bash
 # Run all quality checks
-make lint-tests
+make lint
 
 # Format code
-make format-tests
+make format
 
 # Check imports
 isort tests/ --check-only
 
 # Security scan
 bandit -r . -x tests/
-```
-
-### Adding New Features
-
-#### New Quality Metric
-```python
-# In core/quality_metrics.py
-@staticmethod
-def calculate_new_metric(data: np.ndarray) -> float:
-    """Calculate new quality metric."""
-    # Implementation here
-    return metric_value
-
-# Add corresponding test in tests/test_core_quality_metrics.py
-def test_new_metric_calculation():
-    """Test new metric calculation."""
-    # Test implementation
-    pass
-```
-
-#### New Seafloor Type
-```python
-# In core/enums.py
-class SeafloorType(Enum):
-    NEW_TYPE = "new_type"
-
-# In core/adaptive_processor.py
-def _new_type_strategy(self, depth_data: np.ndarray) -> Dict:
-    """Processing strategy for new seafloor type."""
-    return {'smoothing_factor': 0.4, ...}
-
-# Add tests in tests/test_core_adaptive_processor.py
-def test_new_seafloor_type_classification():
-    """Test new seafloor type classification."""
-    # Test implementation
-    pass
-```
-
-#### New Model Architecture
-```python
-# In models/architectures.py
-class NewCAE(AdvancedCAE):
-    """New CAE variant."""
-    
-    def create_model(self, input_shape: tuple, variant_config: Dict = None):
-        # Implementation here
-        return model
-
-# Add tests in tests/test_models_architectures.py
-def test_new_cae_creation():
-    """Test new CAE model creation."""
-    # Test implementation
-    pass
-```
-
-### Testing Guidelines
-
-#### Writing Good Tests
-```python
-# Follow AAA pattern: Arrange, Act, Assert
-def test_quality_metric_calculation():
-    # Arrange
-    test_data = np.ones((10, 10))
-    expected_result = 1.0
-    
-    # Act
-    result = calculate_quality_metric(test_data)
-    
-    # Assert
-    assert result == pytest.approx(expected_result, abs=1e-6)
-```
-
-#### Using Test Fixtures
-```python
-# Use provided fixtures for common test scenarios
-def test_with_bathymetric_data(sample_depth_data):
-    """Test using fixture-provided data."""
-    processor = BathymetricProcessor(config)
-    result = processor.process(sample_depth_data)
-    assert result.shape == sample_depth_data.shape
-```
-
-#### Performance Testing
-```python
-def test_processing_performance():
-    """Test processing performance benchmarks."""
-    with PerformanceMonitor().monitor() as monitor:
-        # Perform operation
-        process_large_dataset()
-    
-    results = monitor.get_results()
-    assert results['execution_time'] < 30.0  # 30 second limit
-    assert results['max_memory_mb'] < 2000   # 2GB limit
-```
-
-### Code Style Guidelines
-- **PEP 8 compliance**: Use `black` for formatting
-- **Type hints**: Add type annotations for all functions
-- **Docstrings**: Use Google-style docstrings
-- **Error handling**: Comprehensive try/except blocks
-- **Logging**: Use module-level loggers
-- **Testing**: Write tests for all new functionality
-
-### Debugging and Profiling
-```bash
-# Debug mode with verbose logging
-python main.py --log-level DEBUG --input test_data/ --epochs 5
-
-# Profile memory usage
-python -m memory_profiler main.py --input test_data/ --epochs 1
-
-# Profile execution time
-python -m cProfile -o profile_results.prof main.py --input test_data/
 ```
 
 ## 📈 Output Files
@@ -533,35 +623,6 @@ python -m cProfile -o profile_results.prof main.py --input test_data/
 - **Comparison Plots**: `plots/enhanced_comparison_*.png`
 - **Training History**: `plots/training_history_ensemble_*.png`
 - **Quality Metrics**: Embedded in comparison plots
-
-### Metadata Structure
-```json
-{
-  "PROCESSING": {
-    "PROCESSING_DATE": "2024-01-15T10:30:45",
-    "PROCESSING_SOFTWARE": "Enhanced Bathymetric CAE v2.0",
-    "MODEL_TYPE": "Ensemble Convolutional Autoencoder",
-    "ENSEMBLE_SIZE": "5",
-    "SEAFLOOR_TYPE": "continental_shelf"
-  },
-  "QUALITY": {
-    "QUALITY_COMPOSITE_QUALITY": "0.8234",
-    "QUALITY_SSIM": "0.8567",
-    "QUALITY_FEATURE_PRESERVATION": "0.7891",
-    "QUALITY_HYDROGRAPHIC_COMPLIANCE": "0.8456"
-  },
-  "ADAPTIVE": {
-    "ADAPTIVE_SMOOTHING_FACTOR": "0.5",
-    "ADAPTIVE_EDGE_PRESERVATION": "0.6",
-    "ADAPTIVE_NOISE_THRESHOLD": "0.15"
-  },
-  "TESTING": {
-    "TEST_COVERAGE": "87.5%",
-    "QUALITY_GATES_PASSED": true,
-    "LAST_TEST_RUN": "2024-01-15T09:15:30"
-  }
-}
-```
 
 ## 🚨 Troubleshooting
 
@@ -589,7 +650,7 @@ pip install tensorflow[and-cuda]  # Reinstall GPU support
 # Symptoms: Cannot open file, format not supported
 # Solutions:
 gdalinfo your_file.bag  # Check file validity
-pip install gdal  # Ensure GDAL is installed
+conda install -c conda-forge gdal  # Ensure GDAL is installed via conda
 ```
 
 #### Test Failures
@@ -659,7 +720,13 @@ pytest --pdb tests/
 # Setup development environment
 git clone your-fork-url
 cd enhanced-bathymetric-cae
-pip install -e ".[dev]"
+
+# Use conda for reliable GDAL support
+conda env create -f environment.yml
+conda activate bathymetric-cae
+pip install -e .
+
+# Install test dependencies
 pip install -r tests/requirements-test.txt
 
 # Create feature branch
@@ -717,6 +784,7 @@ If you use this software in your research, please cite:
 
 - **IHO S-44 Standards**: [International Hydrographic Organization](https://iho.int/)
 - **GDAL**: [Geospatial Data Abstraction Library](https://gdal.org/)
+- **Conda-Forge**: [Community-led conda packages](https://conda-forge.org/)
 - **TensorFlow**: [Machine Learning Platform](https://tensorflow.org/)
 - **BAG Format**: [Bathymetric Attributed Grid](https://www.opennavsurf.org/bag)
 - **Pytest**: [Python Testing Framework](https://pytest.org/)
@@ -724,7 +792,7 @@ If you use this software in your research, please cite:
 ## 📞 Support
 
 - **🐛 Bug Reports**: [GitHub Issues](https://github.com/noaa-ocs-hydrography/bathymetric-cae/issues)
-- **💡 Feature Requests**: [GitHub Discussions](https://github.com/noaa-ocs=hydrography/bathymetric-cae/discussions)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/noaa-ocs-hydrography/bathymetric-cae/discussions)
 - **📧 Email**: grant.froelich@noaa.gov
 - **📚 Documentation**: [Wiki](https://github.com/noaa-ocs-hydrography/bathymetric-cae/docs)
 - **🧪 Testing Guide**: [Testing Best Practices](tests/README.md)
@@ -733,6 +801,7 @@ If you use this software in your research, please cite:
 
 ### v2.0.0 (Current)
 - ✨ **New**: Complete modular architecture
+- ✨ **New**: Conda-forge integration for reliable GDAL support
 - ✨ **New**: Ensemble model system with multiple CAE variants
 - ✨ **New**: Adaptive processing based on seafloor classification
 - ✨ **New**: Constitutional AI constraints for data integrity
@@ -744,13 +813,19 @@ If you use this software in your research, please cite:
 - ✨ **New**: CI/CD integration with GitHub Actions
 - ✨ **New**: Performance monitoring and benchmarking
 - ✨ **New**: Automated test execution and reporting
+- ✨ **New**: Docker containerization with conda
 - 🔧 **Improved**: Memory management and GPU optimization
 - 🔧 **Improved**: Error handling and logging
 - 🔧 **Improved**: Configuration management
-- 📚 **Updated**: Complete documentation rewrite
+- 🔧 **Improved**: Cross-platform installation reliability
+- 📚 **Updated**: Complete documentation rewrite with conda-first approach
 
 ### v1.0.0 (Legacy)
 - 🎯 Initial monolithic implementation
 - 🤖 Basic CAE architecture
 - 📁 Simple file processing
 - 📊 Basic quality metrics
+
+---
+
+**Next Steps**: After successful installation, continue with the [Quick Start Guide](docs/getting-started/quick-start.md)
