@@ -335,7 +335,11 @@ class EnhancedBathymetricCAEPipeline:
             
             # Get adaptive processing parameters
             depth_data = input_data[..., 0]
+            seafloor_type = self.adaptive_processor.seafloor_classifier.classify(depth_data)
             adaptive_params = self.adaptive_processor.get_processing_parameters(depth_data)
+            
+            # ✅ FIX: Add seafloor_type to adaptive_params for metadata
+            adaptive_params['seafloor_type'] = seafloor_type.value
             
             # Apply adaptive preprocessing
             enhanced_input = self._apply_adaptive_preprocessing(input_data, adaptive_params)
@@ -380,7 +384,7 @@ class EnhancedBathymetricCAEPipeline:
             stats = {
                 'filename': file_path.name,
                 'processing_time': datetime.datetime.now().isoformat(),
-                'seafloor_type': self.adaptive_processor.seafloor_classifier.classify(depth_data).value,
+                'seafloor_type': seafloor_type.value,  # ✅ Also use the seafloor_type variable directly
                 'adaptive_params': adaptive_params,
                 **all_metrics
             }
