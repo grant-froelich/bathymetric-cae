@@ -25,7 +25,7 @@ By the end of this guide, you'll have:
 
 ```bash
 # Install the package
-pip install enhanced-bathymetric-cae
+pip install bathymetric-cae
 
 # Verify installation
 bathymetric-cae --version
@@ -33,7 +33,7 @@ bathymetric-cae --version
 
 !!! success "Expected Output"
     ```
-    Enhanced Bathymetric CAE Processing v2.0.0
+    Bathymetric CAE Processing v2.0.0
     ```
 
 ### Alternative: Development Install
@@ -41,8 +41,8 @@ bathymetric-cae --version
 If you want the latest features:
 
 ```bash
-git clone https://github.com/your-org/enhanced-bathymetric-cae.git
-cd enhanced-bathymetric-cae
+git clone https://github.com/noaa-ocs-hydrography/bathymetric-cae.git
+cd bathymetric-cae
 pip install -r requirements.txt
 pip install -e .
 ```
