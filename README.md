@@ -1,4 +1,4 @@
-# Enhanced Bathymetric CAE Processing v2.0
+# Bathymetric CAE Processing v2.0
 
 Advanced bathymetric grid processing using ensemble Convolutional Autoencoders with domain-specific enhancements, constitutional AI constraints, expert review systems, and comprehensive testing infrastructure.
 
