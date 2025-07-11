@@ -1,118 +1,308 @@
-# Makefile
+# Makefile for Enhanced Bathymetric CAE Processing
+# Updated to support both conda and pip environments
 
-.PHONY: test test-unit test-integration test-performance test-coverage clean-test
+.PHONY: help install install-dev install-conda test test-unit test-integration test-performance clean lint format docker
 
-# Python and pytest configuration
-PYTHON := python3
+# Default shell
+SHELL := /bin/bash
+
+# Detect conda environment
+ifdef CONDA_DEFAULT_ENV
+    PYTHON := python
+    PIP := pip
+    CONDA_ENV := $(CONDA_DEFAULT_ENV)
+    IN_CONDA := true
+else ifdef CONDA_PREFIX
+    PYTHON := python
+    PIP := pip
+    CONDA_ENV := $(shell basename $(CONDA_PREFIX))
+    IN_CONDA := true
+else
+    PYTHON := python3
+    PIP := pip3
+    IN_CONDA := false
+endif
+
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
+
+# Test configuration
 PYTEST := pytest
 PYTEST_ARGS := -v --tb=short --strict-markers
-
-# Test directories
 TEST_DIR := tests
-UNIT_TESTS := $(TEST_DIR)/test_*.py
-INTEGRATION_TESTS := $(TEST_DIR)/test_integration.py
-PERFORMANCE_TESTS := $(TEST_DIR)/test_performance.py
-
-# Coverage configuration
 COV_ARGS := --cov=config --cov=core --cov=models --cov=processing --cov=review --cov=utils
 COV_REPORT := --cov-report=html:htmlcov --cov-report=term-missing --cov-report=xml
 
-# Default test target
-test: test-unit test-integration
+help: ## Show this help message
+	@echo -e "$(BLUE)Enhanced Bathymetric CAE Processing - Makefile$(NC)"
+	@echo ""
+	@echo -e "$(GREEN)Installation:$(NC)"
+	@echo "  install-conda    Create conda environment and install (recommended)"
+	@echo "  install          Install in current environment"
+	@echo "  install-dev      Install in development mode"
+	@echo ""
+	@echo -e "$(GREEN)Testing:$(NC)"
+	@echo "  test             Run all tests"
+	@echo "  test-unit        Run unit tests only"
+	@echo "  test-integration Run integration tests"
+	@echo "  test-performance Run performance tests"
+	@echo "  test-coverage    Run tests with coverage"
+	@echo ""
+	@echo -e "$(GREEN)Development:$(NC)"
+	@echo "  lint             Run code linting"
+	@echo "  format           Format code"
+	@echo "  clean            Clean build artifacts"
+	@echo ""
+	@echo -e "$(GREEN)Docker:$(NC)"
+	@echo "  docker-build     Build Docker images"
+	@echo "  docker-test      Test Docker images"
+	@echo ""
+	@echo -e "$(GREEN)Environment:$(NC)"
+	@echo "  env-info         Show environment information"
+	@echo "  check-gdal       Check GDAL installation"
 
-# Run all unit tests
-test-unit:
-	@echo "Running unit tests..."
-	$(PYTEST) $(UNIT_TESTS) $(PYTEST_ARGS)
+env-info: ## Show environment information
+	@echo -e "$(BLUE)Environment Information:$(NC)"
+	@echo "Python: $(shell $(PYTHON) --version)"
+	@echo "Pip: $(shell $(PIP) --version)"
+ifeq ($(IN_CONDA),true)
+	@echo -e "$(GREEN)✓$(NC) Conda environment: $(CONDA_ENV)"
+	@conda info | grep "active environment"
+else
+	@echo -e "$(YELLOW)⚠$(NC) Not in conda environment (pip installation)"
+endif
+	@echo "Working directory: $(PWD)"
 
-# Run integration tests
-test-integration:
-	@echo "Running integration tests..."
-	$(PYTEST) $(INTEGRATION_TESTS) $(PYTEST_ARGS)
+check-gdal: ## Check GDAL installation
+	@echo -e "$(BLUE)Checking GDAL installation...$(NC)"
+	@$(PYTHON) -c "
+try:
+    from osgeo import gdal, ogr, osr
+    print('✅ GDAL import successful')
+    print(f'   Version: {gdal.__version__}')
+    print(f'   Drivers: {gdal.GetDriverCount()}')
+except ImportError as e:
+    print('❌ GDAL import failed:', e)
+    print('   Recommended: make install-conda')
+    exit(1)
+except Exception as e:
+    print('❌ GDAL error:', e)
+    exit(1)
+"
 
-# Run performance tests
-test-performance:
-	@echo "Running performance tests..."
-	$(PYTEST) $(PERFORMANCE_TESTS) $(PYTEST_ARGS) -m "not slow"
+install-conda: ## Create conda environment and install (recommended)
+	@echo -e "$(BLUE)Creating conda environment...$(NC)"
+	@if [ ! -f environment.yml ]; then \
+		echo -e "$(RED)❌ environment.yml not found$(NC)"; \
+		exit 1; \
+	fi
+	@conda env create -f environment.yml || conda env update -f environment.yml
+	@echo -e "$(GREEN)✓ Conda environment created$(NC)"
+	@echo -e "$(YELLOW)Activate with: conda activate bathymetric-cae$(NC)"
+	@echo -e "$(YELLOW)Then run: make install-dev$(NC)"
 
-# Run all tests with coverage
-test-coverage:
-	@echo "Running tests with coverage..."
-	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) $(COV_ARGS) $(COV_REPORT)
+install: ## Install package in current environment
+	@echo -e "$(BLUE)Installing Enhanced Bathymetric CAE...$(NC)"
+ifeq ($(IN_CONDA),false)
+	@echo -e "$(YELLOW)⚠ Installing with pip (GDAL issues possible)$(NC)"
+	@echo -e "$(YELLOW)  Recommended: make install-conda$(NC)"
+endif
+	@$(PIP) install -e .
+	@echo -e "$(GREEN)✓ Installation complete$(NC)"
+	@make check-gdal
 
-# Run tests and generate reports
-test-reports:
-	@echo "Running tests with reports..."
-	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) $(COV_ARGS) $(COV_REPORT) \
-		--junitxml=test_results.xml \
-		--html=test_report.html --self-contained-html
+install-dev: ## Install in development mode with test dependencies
+	@echo -e "$(BLUE)Installing in development mode...$(NC)"
+	@$(PIP) install -e . --no-deps
+ifeq ($(IN_CONDA),true)
+	@echo -e "$(GREEN)✓ Using conda environment dependencies$(NC)"
+else
+	@echo -e "$(YELLOW)⚠ Installing additional dependencies via pip$(NC)"
+	@$(PIP) install -r requirements.txt
+endif
+	@if [ -f tests/requirements-test.txt ]; then \
+		$(PIP) install -r tests/requirements-test.txt; \
+	fi
+	@echo -e "$(GREEN)✓ Development installation complete$(NC)"
+	@make check-gdal
 
-# Run specific test file
-test-file:
-	@echo "Usage: make test-file FILE=test_filename.py"
-	$(PYTEST) $(TEST_DIR)/$(FILE) $(PYTEST_ARGS) -v
+test: test-unit test-integration ## Run all tests
 
-# Generate test data
-test-data:
-	@echo "Generating test data..."
-	$(PYTHON) -c "from tests.test_fixtures.sample_data_generator import TestDataGenerator; \
-		from pathlib import Path; \
-		TestDataGenerator.create_test_dataset(Path('test_data'), 10)"
+test-unit: ## Run unit tests
+	@echo -e "$(BLUE)Running unit tests...$(NC)"
+	@make check-gdal
+	@$(PYTEST) $(TEST_DIR)/test_*.py \
+		--ignore=$(TEST_DIR)/test_integration.py \
+		--ignore=$(TEST_DIR)/test_performance.py \
+		$(PYTEST_ARGS)
+	@echo -e "$(GREEN)✓ Unit tests completed$(NC)"
 
-# Clean test artifacts
-clean-test:
-	@echo "Cleaning test artifacts..."
-	rm -rf htmlcov/
-	rm -rf .coverage
-	rm -rf .pytest_cache/
-	rm -rf test_results.xml
-	rm -rf test_report.html
-	rm -rf test_data/
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
+test-integration: ## Run integration tests
+	@echo -e "$(BLUE)Running integration tests...$(NC)"
+	@make check-gdal
+	@$(PYTEST) $(TEST_DIR)/test_integration.py $(PYTEST_ARGS)
+	@echo -e "$(GREEN)✓ Integration tests completed$(NC)"
 
-# Setup test environment
-setup-test:
-	@echo "Setting up test environment..."
-	pip install pytest pytest-cov pytest-html pytest-mock
-	mkdir -p logs plots expert_reviews test_data
+test-performance: ## Run performance tests
+	@echo -e "$(BLUE)Running performance tests...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/test_performance.py $(PYTEST_ARGS) -m "not slow"
+	@echo -e "$(GREEN)✓ Performance tests completed$(NC)"
 
-# Run tests in parallel
-test-parallel:
-	@echo "Running tests in parallel..."
-	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) -n auto
+test-coverage: ## Run tests with coverage report
+	@echo -e "$(BLUE)Running tests with coverage...$(NC)"
+	@$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) $(COV_ARGS) $(COV_REPORT)
+	@echo -e "$(GREEN)✓ Coverage report generated: htmlcov/index.html$(NC)"
 
-# Run tests with memory profiling
-test-memory:
-	@echo "Running tests with memory profiling..."
-	$(PYTEST) $(TEST_DIR) $(PYTEST_ARGS) --memray
+test-advanced: ## Run advanced test suite
+	@echo -e "$(BLUE)Running advanced test suite...$(NC)"
+	@$(PYTHON) tests/run_tests_advanced.py --category all --verbose
+	@echo -e "$(GREEN)✓ Advanced tests completed$(NC)"
 
-# Lint test code
-lint-tests:
-	@echo "Linting test code..."
-	flake8 $(TEST_DIR)
-	black --check $(TEST_DIR)
+test-quick: ## Quick test run (unit tests only, no coverage)
+	@echo -e "$(BLUE)Running quick tests...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/test_*.py \
+		--ignore=$(TEST_DIR)/test_integration.py \
+		--ignore=$(TEST_DIR)/test_performance.py \
+		$(PYTEST_ARGS) -x
+	@echo -e "$(GREEN)✓ Quick tests completed$(NC)"
 
-# Format test code
-format-tests:
-	@echo "Formatting test code..."
-	black $(TEST_DIR)
-	isort $(TEST_DIR)
+lint: ## Run code linting
+	@echo -e "$(BLUE)Running code linting...$(NC)"
+	@echo "Flake8..."
+	@flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+	@flake8 . --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+	@echo "Black (check only)..."
+	@black --check --diff . || echo -e "$(YELLOW)⚠ Code formatting issues found$(NC)"
+	@echo "isort (check only)..."
+	@isort --check-only --diff . || echo -e "$(YELLOW)⚠ Import sorting issues found$(NC)"
+	@echo -e "$(GREEN)✓ Linting completed$(NC)"
 
-# Help target
-help:
-	@echo "Available test targets:"
-	@echo "  test              - Run unit and integration tests"
-	@echo "  test-unit         - Run only unit tests"
-	@echo "  test-integration  - Run only integration tests"
-	@echo "  test-performance  - Run performance tests"
-	@echo "  test-coverage     - Run tests with coverage report"
-	@echo "  test-reports      - Run tests and generate all reports"
-	@echo "  test-file         - Run specific test file (use FILE=filename)"
-	@echo "  test-data         - Generate test data"
-	@echo "  test-parallel     - Run tests in parallel"
-	@echo "  test-memory       - Run tests with memory profiling"
-	@echo "  clean-test        - Clean test artifacts"
-	@echo "  setup-test        - Setup test environment"
-	@echo "  lint-tests        - Lint test code"
-	@echo "  format-tests      - Format test code"
+format: ## Format code
+	@echo -e "$(BLUE)Formatting code...$(NC)"
+	@black .
+	@isort .
+	@echo -e "$(GREEN)✓ Code formatted$(NC)"
+
+clean: ## Clean build artifacts and test files
+	@echo -e "$(BLUE)Cleaning build artifacts...$(NC)"
+	@rm -rf build/
+	@rm -rf dist/
+	@rm -rf *.egg-info/
+	@rm -rf htmlcov/
+	@rm -rf .coverage
+	@rm -rf .pytest_cache/
+	@rm -rf test-results.xml
+	@rm -rf test-report.html
+	@rm -rf test_data/
+	@rm -rf __pycache__/
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete
+	@find . -type f -name "*.pyo" -delete
+	@echo -e "$(GREEN)✓ Cleanup completed$(NC)"
+
+generate-test-data: ## Generate test data
+	@echo -e "$(BLUE)Generating test data...$(NC)"
+	@$(PYTHON) -c "
+from tests.test_fixtures.sample_data_generator import TestDataGenerator
+from pathlib import Path
+TestDataGenerator.create_test_dataset(Path('test_data'), 10)
+print('✅ Test data generated in test_data/')
+"
+
+docker-build: ## Build Docker images
+	@echo -e "$(BLUE)Building Docker images...$(NC)"
+	@docker build -f Dockerfile.conda -t bathymetric-cae:dev --target development .
+	@docker build -f Dockerfile.conda -t bathymetric-cae:latest --target production .
+	@echo -e "$(GREEN)✓ Docker images built$(NC)"
+
+docker-test: docker-build ## Test Docker images
+	@echo -e "$(BLUE)Testing Docker images...$(NC)"
+	@docker run --rm bathymetric-cae:latest bathymetric-cae --version
+	@docker run --rm bathymetric-cae:dev python -c "from osgeo import gdal; print('GDAL OK')"
+	@echo -e "$(GREEN)✓ Docker images tested$(NC)"
+
+docker-run: ## Run Docker container interactively
+	@echo -e "$(BLUE)Running Docker container...$(NC)"
+	@docker run -it --rm \
+		-v $(PWD)/data:/app/data:ro \
+		-v $(PWD)/output:/app/output \
+		bathymetric-cae:latest
+
+# Conda-specific targets
+conda-env-export: ## Export conda environment
+ifeq ($(IN_CONDA),true)
+	@conda env export > environment-export.yml
+	@echo -e "$(GREEN)✓ Environment exported to environment-export.yml$(NC)"
+else
+	@echo -e "$(RED)❌ Not in conda environment$(NC)"
+endif
+
+conda-env-update: ## Update conda environment from file
+ifeq ($(IN_CONDA),true)
+	@conda env update -f environment.yml
+	@echo -e "$(GREEN)✓ Environment updated$(NC)"
+else
+	@echo -e "$(RED)❌ Not in conda environment$(NC)"
+endif
+
+# Development helpers
+watch-tests: ## Watch for changes and run tests
+	@echo -e "$(BLUE)Watching for changes...$(NC)"
+	@while inotifywait -e modify -r .; do make test-quick; done
+
+benchmark: ## Run performance benchmarks
+	@echo -e "$(BLUE)Running performance benchmarks...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/test_performance.py --benchmark-only --benchmark-json=benchmark.json
+	@echo -e "$(GREEN)✓ Benchmarks completed: benchmark.json$(NC)"
+
+security-scan: ## Run security scan
+	@echo -e "$(BLUE)Running security scan...$(NC)"
+	@$(PIP) install bandit[toml] safety
+	@bandit -r . -f json -o bandit-report.json || true
+	@safety check --json --output safety-report.json || true
+	@echo -e "$(GREEN)✓ Security scan completed$(NC)"
+
+# CI/CD helpers
+ci-install: ## Install for CI environment
+ifeq ($(CI),true)
+	@echo -e "$(BLUE)Installing for CI...$(NC)"
+	@$(PIP) install -e . --no-deps
+	@$(PIP) install -r tests/requirements-test.txt
+else
+	@echo -e "$(YELLOW)Not in CI environment, using regular install$(NC)"
+	@make install-dev
+endif
+
+ci-test: ## Run tests for CI
+	@make test-coverage
+	@make test-integration
+	@$(PYTHON) tests/run_tests_advanced.py --quick
+
+# Help with colors
+.PHONY: help
+help: ## Show this help message
+	@echo -e "$(BLUE)Enhanced Bathymetric CAE Processing - Makefile$(NC)"
+	@echo ""
+	@echo "Current environment:"
+ifeq ($(IN_CONDA),true)
+	@echo -e "  $(GREEN)✓ Conda environment: $(CONDA_ENV)$(NC)"
+else
+	@echo -e "  $(YELLOW)⚠ Pip environment (conda recommended)$(NC)"
+endif
+	@echo ""
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ""
+	@echo -e "$(BLUE)Quick Start:$(NC)"
+ifeq ($(IN_CONDA),false)
+	@echo -e "  1. $(YELLOW)make install-conda$(NC)  # Create conda environment"
+	@echo -e "  2. $(YELLOW)conda activate bathymetric-cae$(NC)"
+	@echo -e "  3. $(YELLOW)make install-dev$(NC)   # Install in development mode"
+else
+	@echo -e "  1. $(YELLOW)make install-dev$(NC)   # Install in development mode"
+endif
+	@echo -e "  2. $(YELLOW)make test$(NC)           # Run tests"
+	@echo -e "  3. $(YELLOW)make check-gdal$(NC)     # Verify GDAL installation"
