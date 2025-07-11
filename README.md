@@ -703,12 +703,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you use this software in your research, please cite:
 
 ```bibtex
-@software{enhanced_bathymetric_cae_2024,
-  title={Enhanced Bathymetric CAE Processing: Advanced Deep Learning for Seafloor Data},
-  author={Your Name and Contributors},
-  year={2024},
+@software{enhanced_bathymetric_cae_2025,
+  title={Bathymetric CAE Processing: Advanced Deep Learning for Seafloor Data},
+  author={Grant Froelich},
+  year={2025},
   version={2.0.0},
-  url={https://github.com/your-repo/enhanced-bathymetric-cae},
+  url={https://github.com/noaa-ocs-hydrography/bathymetric-cae},
   doi={10.xxxx/xxxxx}
 }
 ```
@@ -723,10 +723,10 @@ If you use this software in your research, please cite:
 
 ## 📞 Support
 
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/your-repo/enhanced-bathymetric-cae/issues)
-- **💡 Feature Requests**: [GitHub Discussions](https://github.com/your-repo/enhanced-bathymetric-cae/discussions)
-- **📧 Email**: your.email@institution.org
-- **📚 Documentation**: [Wiki](https://github.com/your-repo/enhanced-bathymetric-cae/wiki)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/noaa-ocs-hydrography/bathymetric-cae/issues)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/noaa-ocs=hydrography/bathymetric-cae/discussions)
+- **📧 Email**: grant.froelich@noaa.gov
+- **📚 Documentation**: [Wiki](https://github.com/noaa-ocs-hydrography/bathymetric-cae/docs)
 - **🧪 Testing Guide**: [Testing Best Practices](tests/README.md)
 
 ## 🔄 Changelog
@@ -754,19 +754,3 @@ If you use this software in your research, please cite:
 - 🤖 Basic CAE architecture
 - 📁 Simple file processing
 - 📊 Basic quality metrics
-
----
-
-<div align="center">
-
-**🌊 Advancing Bathymetric Data Processing with AI 🤖**
-
-*Built with ❤️ for the oceanographic and hydrographic communities*
-
-**Quality Assured with Comprehensive Testing 🧪**
-
-[![Tests](https://github.com/your-repo/enhanced-bathymetric-cae/actions/workflows/test.yml/badge.svg)](https://github.com/your-repo/enhanced-bathymetric-cae/actions/workflows/test.yml)
-[![Coverage](https://codecov.io/gh/your-repo/enhanced-bathymetric-cae/branch/main/graph/badge.svg)](https://codecov.io/gh/your-repo/enhanced-bathymetric-cae)
-[![Code Quality](https://api.codacy.com/project/badge/Grade/12345)](https://www.codacy.com/gh/your-repo/enhanced-bathymetric-cae)
-
-</div>
