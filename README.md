@@ -40,7 +40,7 @@ Advanced bathymetric grid processing using ensemble Convolutional Autoencoders w
 
 ### Quick Install
 ```bash
-git clone https://github.com/your-repo/enhanced-bathymetric-cae.git
+git clone https://github.com/noaa-ocs-hydrography/bathymetric-cae.git
 cd enhanced-bathymetric-cae
 pip install -r requirements.txt
 ```
