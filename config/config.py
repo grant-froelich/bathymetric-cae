@@ -5,7 +5,7 @@ Configuration module for Enhanced Bathymetric CAE Processing.
 import json
 import datetime
 from typing import List
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 
 @dataclass
@@ -40,7 +40,6 @@ class Config:
     min_lr: float = 1e-7
     
     # Processing
-    supported_formats: List[str] = None
     min_patch_size: int = 32
     max_workers: int = -1
     
@@ -64,8 +63,6 @@ class Config:
     consistency_weight: float = 0.2
     
     def __post_init__(self):
-        if self.supported_formats is None:
-            self.supported_formats = ['.bag', '.tif', '.tiff', '.asc', '.xyz']
         self.validate()
     
     def validate(self):
