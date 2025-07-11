@@ -15,7 +15,7 @@ with open('requirements.txt') as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 setup(
-    name="enhanced-bathymetric-cae",
+    name="bathymetric-cae",
     version="2.0.0",
     author="Grant Froelich",
     author_email="grant.froelich@noaa.gov",
