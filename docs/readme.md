@@ -205,8 +205,6 @@ See our [Contributing Guide](contributing/README.md) for detailed instructions.
 - **Report bugs** in documentation: [GitHub Issues](https://github.com/noaa-ocs-hydrography/bathymetric-cae/issues)
 - **Request improvements**: [GitHub Discussions](https://github.com/noaa-ocs-hydrography/bathymetric-cae/discussions)
 
-## 📈 Documentation Metrics
-
 ## 🎯 Feedback and Improvement
 
 We continuously improve our documentation based on:
