@@ -14,7 +14,7 @@ from core.adaptive_processor import AdaptiveProcessor
 from core.quality_metrics import BathymetricQualityMetrics
 from core.constraints import BathymetricConstraints
 from review.expert_system import ExpertReviewSystem
-from .architectures import create_model_variant
+from models.architectures import create_model_variant
 
 
 class BathymetricEnsemble:

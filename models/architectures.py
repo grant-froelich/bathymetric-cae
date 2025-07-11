@@ -177,7 +177,6 @@ class AdvancedCAE:
         return consistency_loss
 
 
-
 class UncertaintyCAE(AdvancedCAE):
     """CAE variant that estimates prediction uncertainty."""
     
@@ -206,12 +205,12 @@ class UncertaintyCAE(AdvancedCAE):
             name="UncertaintyCAE"
         )
         
-        # FIXED: Compile with proper list format for multiple outputs
+        # ✅ FIXED: Compile with proper list format for multiple outputs
         optimizer = tf.keras.optimizers.AdamW(learning_rate=self.config.learning_rate)
         model.compile(
             optimizer=optimizer,
-            loss=['mse', 'mse'],  # FIXED: Use list instead of dict
-            loss_weights=[1.0, 0.1],  # FIXED: Use list instead of dict
+            loss=['mse', 'mse'],  # ✅ FIXED: Use list instead of dict
+            loss_weights=[1.0, 0.1],  # ✅ FIXED: Use list instead of dict
             metrics=['mae']
         )
         
