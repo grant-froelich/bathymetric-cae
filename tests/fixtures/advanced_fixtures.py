@@ -344,4 +344,143 @@ class PerformanceTestFixture:
             assert results['execution_time'] < self.thresholds['inference_time'], \
                 f"Execution time {results['execution_time']:.2f}s exceeds threshold {self.thresholds['inference_time']}s"
         
-        if 
+        if 'max_memory_mb' in results and results['max_memory_mb']:
+            assert results['max_memory_mb'] < self.thresholds['memory_usage'], \
+                f"Memory usage {results['max_memory_mb']:.1f}MB exceeds threshold {self.thresholds['memory_usage']}MB"
+    
+    def set_performance_thresholds(self, **thresholds):
+        """Set custom performance thresholds."""
+        self.thresholds.update(thresholds)
+    
+    def get_benchmark_summary(self):
+        """Get summary of all benchmarks."""
+        summary = {}
+        
+        for function_key, benchmark_list in self.benchmarks.items():
+            execution_times = [b['execution_time'] for b in benchmark_list]
+            
+            summary[function_key] = {
+                'total_calls': len(benchmark_list),
+                'avg_time': sum(execution_times) / len(execution_times),
+                'min_time': min(execution_times),
+                'max_time': max(execution_times),
+                'total_time': sum(execution_times)
+            }
+        
+        return summary
+    
+    def compare_performance(self, test_name_1: str, test_name_2: str):
+        """Compare performance between two test runs."""
+        if test_name_1 not in self.monitors or test_name_2 not in self.monitors:
+            raise ValueError("Both test names must have monitoring data")
+        
+        results_1 = self.monitors[test_name_1]
+        results_2 = self.monitors[test_name_2]
+        
+        comparison = {}
+        
+        for metric in ['execution_time', 'max_memory_mb']:
+            if metric in results_1 and metric in results_2:
+                val_1 = results_1[metric]
+                val_2 = results_2[metric]
+                
+                if val_1 and val_2:
+                    improvement = ((val_1 - val_2) / val_1) * 100
+                    comparison[metric] = {
+                        'test_1': val_1,
+                        'test_2': val_2,
+                        'improvement_percent': improvement
+                    }
+        
+        return comparison
+    
+    @contextmanager
+    def stress_test_environment(self, memory_limit_mb: int = 1000):
+        """Context manager for stress testing with resource limits."""
+        import psutil
+        
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss / 1024 / 1024
+        
+        try:
+            yield self
+        finally:
+            final_memory = process.memory_info().rss / 1024 / 1024
+            memory_used = final_memory - initial_memory
+            
+            if memory_used > memory_limit_mb:
+                raise AssertionError(
+                    f"Memory usage {memory_used:.1f}MB exceeded limit {memory_limit_mb}MB"
+                )
+    
+    def cleanup(self):
+        """Clean up performance monitoring data."""
+        self.monitors.clear()
+        self.benchmarks.clear()
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        # Clear TensorFlow backend if available
+        try:
+            import tensorflow as tf
+            tf.keras.backend.clear_session()
+        except ImportError:
+            pass
+
+
+# Pytest fixtures for easy integration
+@pytest.fixture
+def model_test_fixture():
+    """Pytest fixture for model testing."""
+    fixture = ModelTestFixture()
+    yield fixture
+    fixture.cleanup()
+
+
+@pytest.fixture
+def data_processing_fixture():
+    """Pytest fixture for data processing testing."""
+    fixture = DataProcessingFixture()
+    yield fixture
+    fixture.cleanup()
+
+
+@pytest.fixture
+def pipeline_test_fixture():
+    """Pytest fixture for pipeline testing."""
+    fixture = PipelineTestFixture()
+    yield fixture
+    fixture.cleanup()
+
+
+@pytest.fixture
+def performance_test_fixture():
+    """Pytest fixture for performance testing."""
+    fixture = PerformanceTestFixture()
+    yield fixture
+    fixture.cleanup()
+
+
+# Combined fixture for comprehensive testing
+@pytest.fixture
+def comprehensive_test_fixture():
+    """Comprehensive fixture combining all testing capabilities."""
+    model_fixture = ModelTestFixture()
+    data_fixture = DataProcessingFixture()
+    pipeline_fixture = PipelineTestFixture()
+    performance_fixture = PerformanceTestFixture()
+    
+    combined_fixture = {
+        'model': model_fixture,
+        'data': data_fixture,
+        'pipeline': pipeline_fixture,
+        'performance': performance_fixture
+    }
+    
+    yield combined_fixture
+    
+    # Cleanup all fixtures
+    for fixture in combined_fixture.values():
+        fixture.cleanup()
