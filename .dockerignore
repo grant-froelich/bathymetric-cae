@@ -1,0 +1,135 @@
+# .dockerignore
+# Optimize Docker builds by excluding unnecessary files
+
+# Git and version control
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing and coverage
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.cache/
+nosetests.xml
+test_results.xml
+test-results.xml
+test_reports/
+benchmark.json
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv and virtual environments
+.python-version
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Documentation build
+docs/_build/
+docs/site/
+*.pdf
+
+# Data directories (usually large and not needed in container)
+data/
+output/
+test_data/
+*.bag
+*.tif
+*.tiff
+*.asc
+*.xyz
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker files (avoid recursive copying)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD files
+.travis.yml
+.circleci/
+.github/workflows/
+
+# Large model files (unless specifically needed)
+models/*.h5
+models/*.pb
+*.pkl
+*.joblib
+
+# Conda environments
+environment-export.yml
+
+# Security and secrets
+.env.local
+.env.*.local
+secrets/
+.secrets/
+
+# Development tools
+.pre-commit-config.yaml
+.flake8
+.mypy_cache/
+.bandit
+.safety
