@@ -66,8 +66,8 @@ def main():
         
         logger.info(f"Enhanced features enabled: {', '.join(features_enabled) if features_enabled else 'None'}")
         
-        # Disable GPU if requested
-        if args.no_gpu:
+        # Handle GPU setting
+        if hasattr(args, 'no_gpu') and args.no_gpu:
             tf.config.set_visible_devices([], 'GPU')
             logger.info("GPU disabled by user request")
         
