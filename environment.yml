@@ -42,9 +42,6 @@ dependencies:
   - flake8>=5.0.0
   - isort>=5.0.0
 
-  # Performance monitoring
-  - memory-profiler>=0.60.0
-
   # Optional hydrographic tools (conda-forge)
   # Uncomment if needed:
   # - pyproj>=3.3.0
@@ -59,6 +56,9 @@ dependencies:
     # Machine Learning (TensorFlow ecosystem)
     - tensorflow>=2.13.0
     # - tensorflow[and-cuda]>=2.13.0  # Uncomment for GPU support
+    
+    # Performance monitoring
+    - memory-profiler>=0.60.0
     
     # Utilities not in conda-forge
     - joblib>=1.1.0
