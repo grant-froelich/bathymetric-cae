@@ -1,0 +1,86 @@
+# environment.yml
+# Conda environment for Enhanced Bathymetric CAE Processing v2.0
+# Optimized for GDAL and geospatial dependencies
+
+name: bathymetric-cae
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python version
+  - python>=3.8,<3.12
+
+  # Core scientific computing
+  - numpy>=1.21.0
+  - scipy>=1.7.0
+  - scikit-learn>=1.0.0
+  - scikit-image>=0.19.0
+
+  # Geospatial packages (conda-forge strongly recommended)
+  - gdal>=3.4.0
+  - libgdal>=3.4.0
+  - rasterio>=1.3.0
+  - opencv>=4.5.0
+
+  # Visualization
+  - matplotlib>=3.5.0
+  - seaborn>=0.11.0
+
+  # System utilities
+  - psutil>=5.8.0
+
+  # Testing framework
+  - pytest>=7.0.0
+  - pytest-cov>=4.0.0
+  - pytest-html>=3.1.0
+  - pytest-mock>=3.10.0
+  - pytest-xdist>=3.0.0
+
+  # Code quality
+  - black>=22.0.0
+  - flake8>=5.0.0
+  - isort>=5.0.0
+
+  # Performance monitoring
+  - memory-profiler>=0.60.0
+
+  # Optional hydrographic tools (conda-forge)
+  # Uncomment if needed:
+  # - pyproj>=3.3.0
+  # - fiona>=1.8.0
+  # - geopandas>=0.12.0
+
+  # pip for packages not available in conda
+  - pip>=21.0
+
+  # pip-only dependencies
+  - pip:
+    # Machine Learning (TensorFlow ecosystem)
+    - tensorflow>=2.13.0
+    # - tensorflow[and-cuda]>=2.13.0  # Uncomment for GPU support
+    
+    # Utilities not in conda-forge
+    - joblib>=1.1.0
+    - pathlib2>=2.3.0
+    
+    # Testing utilities
+    - pytest-benchmark>=4.0.0
+    - hypothesis>=6.0.0
+    - factory-boy>=3.2.0
+    - responses>=0.20.0
+    - freezegun>=1.2.0
+    
+    # Coverage
+    - coverage[toml]>=6.0.0
+    - codecov>=2.1.0
+
+# Environment variables
+variables:
+  # Optimize GDAL performance
+  GDAL_CACHEMAX: "1024"
+  GDAL_NUM_THREADS: "ALL_CPUS"
+  
+  # TensorFlow settings
+  TF_CPP_MIN_LOG_LEVEL: "2"
+  TF_FORCE_GPU_ALLOW_GROWTH: "true"
