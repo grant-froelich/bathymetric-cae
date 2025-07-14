@@ -1,6 +1,6 @@
 """
 Enhanced Bathymetric CAE Processing Pipeline v2.0
-Main processing pipeline with modern Keras format support and comprehensive error handling.
+Fixed for TensorFlow version compatibility and HDF5 issues.
 """
 
 import numpy as np
@@ -28,7 +28,7 @@ from utils.visualization import create_enhanced_visualization, plot_training_his
 
 
 class EnhancedBathymetricCAEPipeline:
-    """Enhanced processing pipeline with modern Keras format support."""
+    """Enhanced processing pipeline with TensorFlow version compatibility."""
     
     def __init__(self, config: Config):
         self.config = config
@@ -37,6 +37,10 @@ class EnhancedBathymetricCAEPipeline:
         self.quality_metrics = BathymetricQualityMetrics()
         self.expert_review = ExpertReviewSystem() if config.enable_expert_review else None
         self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Check TensorFlow version for compatibility
+        self.tf_version = tf.__version__
+        self.logger.info(f"TensorFlow version: {self.tf_version}")
         
         # Initialize processing statistics
         self.processing_stats = {
@@ -48,7 +52,7 @@ class EnhancedBathymetricCAEPipeline:
         }
     
     def run(self, input_folder: str, output_folder: str, model_path: str):
-        """Run the enhanced processing pipeline with modern model format."""
+        """Run the enhanced processing pipeline with compatibility fixes."""
         try:
             self.logger.info("="*60)
             self.logger.info("ENHANCED BATHYMETRIC CAE PIPELINE v2.0")
@@ -70,7 +74,7 @@ class EnhancedBathymetricCAEPipeline:
             channel_analysis = self._analyze_data_channels(file_list)
             self.logger.info(f"Data channel analysis: {channel_analysis}")
             
-            # Train or load ensemble with modern format
+            # Train or load ensemble with compatibility fixes
             ensemble_models = self._get_or_train_ensemble(model_path, file_list, channel_analysis)
             
             # Process files with enhanced features
@@ -88,52 +92,373 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.info("="*60)
             
         except Exception as e:
-            self.logger.error(f"Pipeline failed: {e}")
+            self.logger.error(f"Error calculating SSIM: {e}")
+            return 0.0
+    
+    def _calculate_uncertainty_metrics(self, uncertainty_data: np.ndarray, 
+                                     cleaned_data: np.ndarray) -> Dict:
+        """Calculate comprehensive uncertainty metrics with error handling."""
+        try:
+            return {
+                'mean_uncertainty': float(np.mean(uncertainty_data)),
+                'std_uncertainty': float(np.std(uncertainty_data)),
+                'max_uncertainty': float(np.max(uncertainty_data)),
+                'uncertainty_reduction': float(np.mean(uncertainty_data) - 
+                                             np.mean(np.abs(uncertainty_data - cleaned_data))),
+                'uncertainty_correlation': float(np.corrcoef(uncertainty_data.flatten(), 
+                                                           cleaned_data.flatten())[0, 1])
+            }
+        except Exception as e:
+            self.logger.error(f"Error calculating uncertainty metrics: {e}")
+            return {}
+    
+    def _save_enhanced_results(self, data: np.ndarray, output_path: Path, 
+                             original_shape: Tuple[int, int], geo_metadata: Dict,
+                             quality_metrics: Dict, adaptive_params: Dict):
+        """Save enhanced results with comprehensive metadata and error handling."""
+        try:
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Determine output format
+            ext = output_path.suffix.lower()
+            if ext == '.bag':
+                driver_name = 'BAG'
+            elif ext in ['.tif', '.tiff']:
+                driver_name = 'GTiff'
+            elif ext == '.asc':
+                driver_name = 'AAIGrid'
+            else:
+                output_path = output_path.with_suffix('.tif')
+                driver_name = 'GTiff'
+            
+            # Create output dataset
+            driver = gdal.GetDriverByName(driver_name)
+            if driver is None:
+                raise RuntimeError(f"Driver {driver_name} not available")
+            
+            dataset = driver.Create(
+                str(output_path),
+                original_shape[1], original_shape[0], 1,
+                gdal.GDT_Float32
+            )
+            
+            if dataset is None:
+                raise RuntimeError(f"Failed to create dataset: {output_path}")
+            
+            # Set geospatial information
+            if 'geotransform' in geo_metadata and geo_metadata['geotransform']:
+                dataset.SetGeoTransform(geo_metadata['geotransform'])
+            if 'projection' in geo_metadata and geo_metadata['projection']:
+                dataset.SetProjection(geo_metadata['projection'])
+            
+            # Write data
+            band = dataset.GetRasterBand(1)
+            band.WriteArray(data.astype(np.float32))
+            band.SetNoDataValue(-9999)
+            
+            # Set enhanced metadata
+            processing_metadata = {
+                'PROCESSING_DATE': datetime.datetime.now().isoformat(),
+                'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0',
+                'MODEL_TYPE': 'Ensemble Convolutional Autoencoder',
+                'TENSORFLOW_VERSION': self.tf_version,
+                'ENSEMBLE_SIZE': str(self.config.ensemble_size),
+                'GRID_SIZE': str(self.config.grid_size),
+                'COMPOSITE_QUALITY': f"{quality_metrics.get('composite_quality', 0):.4f}",
+                'SSIM_SCORE': f"{quality_metrics.get('ssim', 0):.4f}",
+                'FEATURE_PRESERVATION': f"{quality_metrics.get('feature_preservation', 0):.4f}",
+                'HYDROGRAPHIC_COMPLIANCE': f"{quality_metrics.get('hydrographic_compliance', 0):.4f}",
+                'SEAFLOOR_TYPE': adaptive_params.get('seafloor_type', 'unknown'),
+                'ADAPTIVE_PROCESSING': 'TRUE' if self.config.enable_adaptive_processing else 'FALSE',
+                'CONSTITUTIONAL_CONSTRAINTS': 'TRUE' if self.config.enable_constitutional_constraints else 'FALSE'
+            }
+            dataset.SetMetadata(processing_metadata, 'PROCESSING')
+            
+            # Add quality metrics as metadata
+            quality_metadata = {f"QUALITY_{k.upper()}": str(v) for k, v in quality_metrics.items()}
+            dataset.SetMetadata(quality_metadata, 'QUALITY')
+            
+            # Add adaptive parameters as metadata
+            adaptive_metadata = {f"ADAPTIVE_{k.upper()}": str(v) for k, v in adaptive_params.items()}
+            dataset.SetMetadata(adaptive_metadata, 'ADAPTIVE')
+            
+            # Flush and close
+            dataset.FlushCache()
+            dataset = None
+            
+            self.logger.debug(f"Successfully saved enhanced results: {output_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Error saving {output_path}: {e}")
+            raise
+    
+    def _flag_for_expert_review(self, filename: str, stats: Dict):
+        """Flag file for expert review based on quality metrics."""
+        if not self.expert_review:
+            return
+        
+        try:
+            # Determine flag type based on low-quality metrics
+            quality_score = stats.get('composite_quality', 1.0)
+            flag_type = "low_quality"
+            
+            if stats.get('feature_preservation', 1.0) < 0.5:
+                flag_type = "feature_loss"
+            elif stats.get('hydrographic_compliance', 1.0) < 0.7:
+                flag_type = "standards_violation"
+            elif stats.get('ssim', 1.0) < 0.6:
+                flag_type = "poor_similarity"
+            
+            # Flag entire file (simplified - could be region-specific)
+            self.expert_review.flag_for_review(
+                filename, (0, 0, 512, 512), flag_type, 1.0 - quality_score
+            )
+            
+            self.logger.warning(f"Flagged {filename} for expert review: {flag_type} "
+                              f"(quality: {quality_score:.3f})")
+            
+        except Exception as e:
+            self.logger.error(f"Error flagging {filename} for review: {e}")
+    
+    def _generate_expert_review_report(self):
+        """Generate expert review report."""
+        if not self.expert_review:
+            return
+        
+        try:
+            pending_reviews = self.expert_review.get_pending_reviews()
+            
+            report = {
+                'generation_date': datetime.datetime.now().isoformat(),
+                'total_pending_reviews': len(pending_reviews),
+                'pending_reviews': pending_reviews,
+                'review_statistics': self.expert_review.get_review_statistics()
+            }
+            
+            report_path = Path("expert_reviews") / "pending_reviews.json"
+            with open(report_path, 'w') as f:
+                json.dump(report, f, indent=2)
+            
+            self.logger.info(f"Expert review report generated: {report_path}")
+            self.logger.info(f"Files pending expert review: {len(pending_reviews)}")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating expert review report: {e}")
+    
+    def _generate_comprehensive_reports(self):
+        """Generate comprehensive processing reports."""
+        try:
+            # Processing statistics report
+            stats_report = {
+                'generation_date': datetime.datetime.now().isoformat(),
+                'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
+                'tensorflow_version': self.tf_version,
+                'processing_statistics': self.processing_stats,
+                'configuration': asdict(self.config)
+            }
+            
+            stats_path = Path("processing_statistics.json")
+            with open(stats_path, 'w') as f:
+                json.dump(stats_report, f, indent=2)
+            
+            self.logger.info(f"Processing statistics saved: {stats_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating comprehensive reports: {e}")
+    
+    def _generate_enhanced_summary_report(self, successful_files: List[str], 
+                                        failed_files: List[str], 
+                                        processing_stats: List[Dict]):
+        """Generate comprehensive enhanced processing summary report."""
+        report_path = Path("enhanced_processing_summary.json")
+        
+        try:
+            # Calculate enhanced summary statistics
+            if processing_stats:
+                quality_scores = [s.get('composite_quality', 0) for s in processing_stats]
+                ssim_scores = [s.get('ssim', 0) for s in processing_stats]
+                feature_scores = [s.get('feature_preservation', 0) for s in processing_stats]
+                
+                summary_stats = {
+                    'mean_composite_quality': float(np.mean(quality_scores)),
+                    'std_composite_quality': float(np.std(quality_scores)),
+                    'min_composite_quality': float(np.min(quality_scores)),
+                    'max_composite_quality': float(np.max(quality_scores)),
+                    'mean_ssim': float(np.mean(ssim_scores)),
+                    'mean_feature_preservation': float(np.mean(feature_scores)),
+                    'high_quality_files': len([q for q in quality_scores if q > 0.8]),
+                    'medium_quality_files': len([q for q in quality_scores if 0.6 <= q <= 0.8]),
+                    'low_quality_files': len([q for q in quality_scores if q < 0.6])
+                }
+                
+                # Seafloor type distribution
+                seafloor_types = [s.get('seafloor_type', 'unknown') for s in processing_stats]
+                seafloor_distribution = {
+                    seafloor_type: seafloor_types.count(seafloor_type) 
+                    for seafloor_type in set(seafloor_types)
+                }
+                
+                # Channel distribution
+                channel_counts = [s.get('input_channels', 1) for s in processing_stats]
+                channel_distribution = {
+                    f"{channels}_channel": channel_counts.count(channels)
+                    for channels in set(channel_counts)
+                }
+            else:
+                summary_stats = {}
+                seafloor_distribution = {}
+                channel_distribution = {}
+            
+            # Create comprehensive report
+            report = {
+                'processing_date': datetime.datetime.now().isoformat(),
+                'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
+                'tensorflow_version': self.tf_version,
+                'configuration': asdict(self.config),
+                'total_files': len(successful_files) + len(failed_files),
+                'successful_files': len(successful_files),
+                'failed_files': len(failed_files),
+                'success_rate': len(successful_files) / (len(successful_files) + len(failed_files)) * 100 if (len(successful_files) + len(failed_files)) > 0 else 0,
+                'processing_time_total': self.processing_stats.get('total_processing_time', 0),
+                'average_processing_time': self.processing_stats.get('total_processing_time', 0) / max(len(successful_files), 1),
+                'summary_statistics': summary_stats,
+                'seafloor_distribution': seafloor_distribution,
+                'channel_distribution': channel_distribution,
+                'successful_file_list': successful_files,
+                'failed_file_list': failed_files,
+                'detailed_stats': processing_stats,
+                'features_enabled': {
+                    'adaptive_processing': self.config.enable_adaptive_processing,
+                    'expert_review': self.config.enable_expert_review,
+                    'constitutional_constraints': self.config.enable_constitutional_constraints,
+                    'ensemble_processing': True
+                },
+                'performance_metrics': {
+                    'files_per_minute': len(successful_files) / max(self.processing_stats.get('total_processing_time', 1) / 60, 1),
+                    'memory_efficiency': 'optimized',
+                    'gpu_utilization': len(tf.config.list_physical_devices('GPU')) > 0
+                }
+            }
+            
+            # Save report
+            with open(report_path, 'w') as f:
+                json.dump(report, f, indent=2)
+            
+            # Log enhanced summary
+            self._log_processing_summary(report)
+            
+        except Exception as e:
+            self.logger.error(f"Error generating enhanced summary report: {e}")
+            # Create minimal report on error
+            minimal_report = {
+                'processing_date': datetime.datetime.now().isoformat(),
+                'total_files': len(successful_files) + len(failed_files),
+                'successful_files': len(successful_files),
+                'failed_files': len(failed_files),
+                'error': str(e)
+            }
+            
+            with open(report_path, 'w') as f:
+                json.dump(minimal_report, f, indent=2)
+    
+    def _log_processing_summary(self, report: Dict):
+        """Log comprehensive processing summary."""
+        self.logger.info("\n" + "="*80)
+        self.logger.info("ENHANCED PROCESSING SUMMARY")
+        self.logger.info("="*80)
+        self.logger.info(f"Pipeline Version: {report['pipeline_version']}")
+        self.logger.info(f"TensorFlow Version: {report.get('tensorflow_version', 'Unknown')}")
+        self.logger.info(f"Processing Date: {report['processing_date']}")
+        self.logger.info("-" * 80)
+        
+        # File statistics
+        self.logger.info("FILE PROCESSING STATISTICS:")
+        self.logger.info(f"  Total files: {report['total_files']}")
+        self.logger.info(f"  Successful: {report['successful_files']}")
+        self.logger.info(f"  Failed: {report['failed_files']}")
+        self.logger.info(f"  Success rate: {report['success_rate']:.1f}%")
+        
+        # Performance statistics
+        if 'processing_time_total' in report:
+            self.logger.info(f"  Total processing time: {report['processing_time_total']:.1f}s")
+            self.logger.info(f"  Average time per file: {report['average_processing_time']:.1f}s")
+        
+        if 'performance_metrics' in report:
+            perf = report['performance_metrics']
+            self.logger.info(f"  Processing rate: {perf['files_per_minute']:.1f} files/minute")
+        
+        # Quality statistics
+        if report.get('summary_statistics'):
+            stats = report['summary_statistics']
+            self.logger.info("-" * 80)
+            self.logger.info("QUALITY STATISTICS:")
+            self.logger.info(f"  Mean composite quality: {stats['mean_composite_quality']:.4f}")
+            self.logger.info(f"  Quality range: {stats['min_composite_quality']:.4f} - {stats['max_composite_quality']:.4f}")
+            self.logger.info(f"  Mean SSIM: {stats['mean_ssim']:.4f}")
+            self.logger.info(f"  Mean feature preservation: {stats['mean_feature_preservation']:.4f}")
+            self.logger.info(f"  High quality files (>0.8): {stats['high_quality_files']}")
+            self.logger.info(f"  Medium quality files (0.6-0.8): {stats['medium_quality_files']}")
+            self.logger.info(f"  Low quality files (<0.6): {stats['low_quality_files']}")
+        
+        # Seafloor distribution
+        if report.get('seafloor_distribution'):
+            self.logger.info("-" * 80)
+            self.logger.info("SEAFLOOR TYPE DISTRIBUTION:")
+            for seafloor_type, count in report['seafloor_distribution'].items():
+                self.logger.info(f"  {seafloor_type}: {count} files")
+        
+        # Features enabled
+        if report.get('features_enabled'):
+            features = report['features_enabled']
+            self.logger.info("-" * 80)
+            self.logger.info("ENABLED FEATURES:")
+            for feature, enabled in features.items():
+                status = "[YES]" if enabled else "[NO] "
+                self.logger.info(f"  {status} {feature.replace('_', ' ').title()}")
+        
+        self.logger.info("="*80)
+        self.logger.info(f"Detailed report saved to: {Path('enhanced_processing_summary.json').absolute()}")
+        
+        if report.get('failed_files'):
+            self.logger.warning(f"Failed files: {report['failed_files']}")
+        
+        self.logger.info("="*80)logger.error(f"Pipeline failed: {e}")
             self.logger.debug("Full traceback:", exc_info=True)
             raise
     
     def _normalize_model_path(self, model_path: str) -> str:
-        """Convert model path to modern Keras format."""
-        if model_path.endswith('.h5'):
-            model_path = model_path.replace('.h5', '.keras')
-        elif not model_path.endswith('.keras'):
-            model_path += '.keras'
+        """Convert model path to appropriate format based on TensorFlow version."""
+        # Use .h5 format for older TensorFlow versions for compatibility
+        if model_path.endswith('.keras'):
+            model_path = model_path.replace('.keras', '.h5')
+        elif not model_path.endswith('.h5'):
+            model_path += '.h5'
         
-        self.logger.debug(f"Using modern Keras format: {model_path}")
+        self.logger.debug(f"Using model format: {model_path}")
         return model_path
     
     def _get_ensemble_model_paths(self, base_model_path: str, ensemble_size: int) -> List[str]:
-        """Get ensemble model paths with modern format."""
+        """Get ensemble model paths with compatibility."""
         base_path = self._normalize_model_path(base_model_path)
-        base_name = base_path.replace('.keras', '')
+        base_name = base_path.replace('.h5', '')
         
-        return [f"{base_name}_ensemble_{i}.keras" for i in range(ensemble_size)]
+        return [f"{base_name}_ensemble_{i}.h5" for i in range(ensemble_size)]
     
     def _get_or_train_ensemble(self, model_path: str, file_list: List[Path], 
                               channel_analysis: Dict):
-        """Load or train ensemble with modern Keras format support."""
+        """Load or train ensemble with TensorFlow version compatibility."""
         try:
             # Get ensemble model paths
             ensemble_paths = self._get_ensemble_model_paths(model_path, self.config.ensemble_size)
             ensemble_models = []
             
-            # Try to load existing models (support both formats for backward compatibility)
-            for i, keras_path in enumerate(ensemble_paths):
-                legacy_h5_path = keras_path.replace('.keras', '.h5')
-                
-                if Path(keras_path).exists():
-                    # Load modern Keras format
-                    self.logger.debug(f"Loading modern format: {keras_path}")
-                    model = load_model(keras_path)
+            # Try to load existing models
+            for i, h5_path in enumerate(ensemble_paths):
+                if Path(h5_path).exists():
+                    self.logger.debug(f"Loading model: {h5_path}")
+                    model = load_model(h5_path)
                     ensemble_models.append(model)
-                elif Path(legacy_h5_path).exists():
-                    # Load legacy H5 format and save as modern format
-                    self.logger.info(f"Converting legacy model {legacy_h5_path} to modern format")
-                    model = load_model(legacy_h5_path)
-                    model.save(keras_path)  # Save in modern format
-                    ensemble_models.append(model)
-                    # Optionally remove old file
-                    # Path(legacy_h5_path).unlink()
                 else:
                     break
             
@@ -142,7 +467,7 @@ class EnhancedBathymetricCAEPipeline:
                 self.logger.info(f"Loaded existing ensemble of {len(ensemble_models)} models")
                 return ensemble_models
             else:
-                self.logger.info("Incomplete ensemble found, training new ensemble")
+                self.logger.info("Training new ensemble")
                 return self._train_ensemble(model_path, file_list, channel_analysis)
             
         except Exception as e:
@@ -150,9 +475,9 @@ class EnhancedBathymetricCAEPipeline:
             return self._train_ensemble(model_path, file_list, channel_analysis)
     
     def _setup_callbacks(self, model_path: str) -> List[callbacks.Callback]:
-        """Setup training callbacks with modern Keras format."""
+        """Setup training callbacks with TensorFlow version compatibility."""
         
-        # Ensure modern format
+        # Ensure compatible format
         model_path = self._normalize_model_path(model_path)
         
         callback_list = [
@@ -175,21 +500,44 @@ class EnhancedBathymetricCAEPipeline:
                 min_lr=self.config.min_lr,
                 verbose=1
             ),
-            callbacks.ModelCheckpoint(
+            callbacks.CSVLogger(f'{model_path.replace(".h5", "_training_log.csv")}')
+        ]
+        
+        # Create ModelCheckpoint callback with version compatibility
+        try:
+            # Try modern format first (TensorFlow 2.17+)
+            checkpoint_callback = callbacks.ModelCheckpoint(
                 model_path,
                 monitor='val_loss',
                 save_best_only=True,
                 verbose=1,
-                save_format='keras'  # Explicitly use modern format
-            ),
-            callbacks.CSVLogger(f'{model_path.replace(".keras", "_training_log.csv")}')
-        ]
+                save_format='tf'  # This might not be supported in older versions
+            )
+            callback_list.append(checkpoint_callback)
+            self.logger.info("Using modern ModelCheckpoint format")
+        except TypeError:
+            # Fallback to older format (TensorFlow < 2.17)
+            checkpoint_callback = callbacks.ModelCheckpoint(
+                model_path,
+                monitor='val_loss',
+                save_best_only=True,
+                verbose=1
+            )
+            callback_list.append(checkpoint_callback)
+            self.logger.info("Using legacy ModelCheckpoint format")
         
         return callback_list
     
     def _setup_environment(self):
         """Setup processing environment with optimization."""
         self.logger.info("Setting up processing environment...")
+        
+        # Fix HDF5 issues
+        try:
+            import os
+            os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+        except:
+            pass
         
         # Optimize GPU memory
         optimize_gpu_memory()
@@ -322,7 +670,7 @@ class EnhancedBathymetricCAEPipeline:
     
     def _train_ensemble(self, model_path: str, file_list: List[Path], 
                        channel_analysis: Dict):
-        """Train new ensemble of models with modern Keras format."""
+        """Train new ensemble of models with compatibility fixes."""
         self.logger.info("Training new ensemble models...")
         
         # Determine model parameters from channel analysis
@@ -488,7 +836,7 @@ class EnhancedBathymetricCAEPipeline:
     
     def _process_files_enhanced(self, ensemble_models: List, file_list: List[Path], 
                                output_folder: str):
-        """Process files using enhanced ensemble approach with modern format support."""
+        """Process files using enhanced ensemble approach."""
         output_path = Path(output_folder)
         processor = BathymetricProcessor(self.config)
         
@@ -543,10 +891,10 @@ class EnhancedBathymetricCAEPipeline:
                 self.logger.info(f"Completed {file_path.name} in {file_duration:.1f}s "
                                f"(Quality: {stats.get('composite_quality', 0):.3f})")
                 
-                # Memory management with modern TF cleanup
+                # Memory management
                 if i % 5 == 0:
                     gc.collect()
-                    tf.keras.backend.clear_session()  # Modern TF cleanup
+                    tf.keras.backend.clear_session()
                     log_memory_usage(f"After processing {i} files")
                 
             except Exception as e:
@@ -562,7 +910,7 @@ class EnhancedBathymetricCAEPipeline:
         total_duration = (processing_end_time - processing_start_time).total_seconds()
         self.processing_stats['total_processing_time'] = total_duration
         
-        # Final cleanup with modern TF
+        # Final cleanup
         gc.collect()
         tf.keras.backend.clear_session()
         
@@ -718,360 +1066,4 @@ class EnhancedBathymetricCAEPipeline:
                 win_size=min(7, min(original.shape[-2:]))
             )
         except Exception as e:
-            self.logger.error(f"Error calculating SSIM: {e}")
-            return 0.0
-    
-    def _calculate_uncertainty_metrics(self, uncertainty_data: np.ndarray, 
-                                     cleaned_data: np.ndarray) -> Dict:
-        """Calculate comprehensive uncertainty metrics with error handling."""
-        try:
-            return {
-                'mean_uncertainty': float(np.mean(uncertainty_data)),
-                'std_uncertainty': float(np.std(uncertainty_data)),
-                'max_uncertainty': float(np.max(uncertainty_data)),
-                'uncertainty_reduction': float(np.mean(uncertainty_data) - 
-                                             np.mean(np.abs(uncertainty_data - cleaned_data))),
-                'uncertainty_correlation': float(np.corrcoef(uncertainty_data.flatten(), 
-                                                           cleaned_data.flatten())[0, 1])
-            }
-        except Exception as e:
-            self.logger.error(f"Error calculating uncertainty metrics: {e}")
-            return {}
-    
-    def _save_enhanced_results(self, data: np.ndarray, output_path: Path, 
-                             original_shape: Tuple[int, int], geo_metadata: Dict,
-                             quality_metrics: Dict, adaptive_params: Dict):
-        """Save enhanced results with comprehensive metadata and error handling."""
-        try:
-            # Ensure output directory exists
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Determine output format
-            ext = output_path.suffix.lower()
-            if ext == '.bag':
-                driver_name = 'BAG'
-            elif ext in ['.tif', '.tiff']:
-                driver_name = 'GTiff'
-            elif ext == '.asc':
-                driver_name = 'AAIGrid'
-            else:
-                output_path = output_path.with_suffix('.tif')
-                driver_name = 'GTiff'
-            
-            # Create output dataset
-            driver = gdal.GetDriverByName(driver_name)
-            if driver is None:
-                raise RuntimeError(f"Driver {driver_name} not available")
-            
-            dataset = driver.Create(
-                str(output_path),
-                original_shape[1], original_shape[0], 1,
-                gdal.GDT_Float32
-            )
-            
-            if dataset is None:
-                raise RuntimeError(f"Failed to create dataset: {output_path}")
-            
-            # Set geospatial information
-            if 'geotransform' in geo_metadata and geo_metadata['geotransform']:
-                dataset.SetGeoTransform(geo_metadata['geotransform'])
-            if 'projection' in geo_metadata and geo_metadata['projection']:
-                dataset.SetProjection(geo_metadata['projection'])
-            
-            # Write data
-            band = dataset.GetRasterBand(1)
-            band.WriteArray(data.astype(np.float32))
-            band.SetNoDataValue(-9999)
-            
-            # Set enhanced metadata
-            processing_metadata = {
-                'PROCESSING_DATE': datetime.datetime.now().isoformat(),
-                'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0',
-                'MODEL_TYPE': 'Ensemble Convolutional Autoencoder',
-                'MODEL_FORMAT': 'Keras Native Format',  # New metadata
-                'ENSEMBLE_SIZE': str(self.config.ensemble_size),
-                'GRID_SIZE': str(self.config.grid_size),
-                'COMPOSITE_QUALITY': f"{quality_metrics.get('composite_quality', 0):.4f}",
-                'SSIM_SCORE': f"{quality_metrics.get('ssim', 0):.4f}",
-                'FEATURE_PRESERVATION': f"{quality_metrics.get('feature_preservation', 0):.4f}",
-                'HYDROGRAPHIC_COMPLIANCE': f"{quality_metrics.get('hydrographic_compliance', 0):.4f}",
-                'SEAFLOOR_TYPE': adaptive_params.get('seafloor_type', 'unknown'),
-                'ADAPTIVE_PROCESSING': 'TRUE' if self.config.enable_adaptive_processing else 'FALSE',
-                'CONSTITUTIONAL_CONSTRAINTS': 'TRUE' if self.config.enable_constitutional_constraints else 'FALSE'
-            }
-            dataset.SetMetadata(processing_metadata, 'PROCESSING')
-            
-            # Add quality metrics as metadata
-            quality_metadata = {f"QUALITY_{k.upper()}": str(v) for k, v in quality_metrics.items()}
-            dataset.SetMetadata(quality_metadata, 'QUALITY')
-            
-            # Add adaptive parameters as metadata
-            adaptive_metadata = {f"ADAPTIVE_{k.upper()}": str(v) for k, v in adaptive_params.items()}
-            dataset.SetMetadata(adaptive_metadata, 'ADAPTIVE')
-            
-            # Flush and close
-            dataset.FlushCache()
-            dataset = None
-            
-            self.logger.debug(f"Successfully saved enhanced results: {output_path}")
-            
-        except Exception as e:
-            self.logger.error(f"Error saving {output_path}: {e}")
-            raise
-    
-    def _flag_for_expert_review(self, filename: str, stats: Dict):
-        """Flag file for expert review based on quality metrics."""
-        if not self.expert_review:
-            return
-        
-        try:
-            # Determine flag type based on low-quality metrics
-            quality_score = stats.get('composite_quality', 1.0)
-            flag_type = "low_quality"
-            
-            if stats.get('feature_preservation', 1.0) < 0.5:
-                flag_type = "feature_loss"
-            elif stats.get('hydrographic_compliance', 1.0) < 0.7:
-                flag_type = "standards_violation"
-            elif stats.get('ssim', 1.0) < 0.6:
-                flag_type = "poor_similarity"
-            
-            # Flag entire file (simplified - could be region-specific)
-            self.expert_review.flag_for_review(
-                filename, (0, 0, 512, 512), flag_type, 1.0 - quality_score
-            )
-            
-            self.logger.warning(f"Flagged {filename} for expert review: {flag_type} "
-                              f"(quality: {quality_score:.3f})")
-            
-        except Exception as e:
-            self.logger.error(f"Error flagging {filename} for review: {e}")
-    
-    def _generate_expert_review_report(self):
-        """Generate expert review report."""
-        if not self.expert_review:
-            return
-        
-        try:
-            pending_reviews = self.expert_review.get_pending_reviews()
-            
-            report = {
-                'generation_date': datetime.datetime.now().isoformat(),
-                'total_pending_reviews': len(pending_reviews),
-                'pending_reviews': pending_reviews,
-                'review_statistics': self.expert_review.get_review_statistics()
-            }
-            
-            report_path = Path("expert_reviews") / "pending_reviews.json"
-            with open(report_path, 'w') as f:
-                json.dump(report, f, indent=2)
-            
-            self.logger.info(f"Expert review report generated: {report_path}")
-            self.logger.info(f"Files pending expert review: {len(pending_reviews)}")
-            
-        except Exception as e:
-            self.logger.error(f"Error generating expert review report: {e}")
-    
-    def _generate_comprehensive_reports(self):
-        """Generate comprehensive processing reports."""
-        try:
-            # Processing statistics report
-            stats_report = {
-                'generation_date': datetime.datetime.now().isoformat(),
-                'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
-                'model_format': 'Keras Native Format',  # New field
-                'processing_statistics': self.processing_stats,
-                'configuration': asdict(self.config)
-            }
-            
-            stats_path = Path("processing_statistics.json")
-            with open(stats_path, 'w') as f:
-                json.dump(stats_report, f, indent=2)
-            
-            self.logger.info(f"Processing statistics saved: {stats_path}")
-            
-        except Exception as e:
-            self.logger.error(f"Error generating comprehensive reports: {e}")
-    
-    def _generate_enhanced_summary_report(self, successful_files: List[str], 
-                                        failed_files: List[str], 
-                                        processing_stats: List[Dict]):
-        """Generate comprehensive enhanced processing summary report."""
-        report_path = Path("enhanced_processing_summary.json")
-        
-        try:
-            # Calculate enhanced summary statistics
-            if processing_stats:
-                quality_scores = [s.get('composite_quality', 0) for s in processing_stats]
-                ssim_scores = [s.get('ssim', 0) for s in processing_stats]
-                feature_scores = [s.get('feature_preservation', 0) for s in processing_stats]
-                
-                summary_stats = {
-                    'mean_composite_quality': float(np.mean(quality_scores)),
-                    'std_composite_quality': float(np.std(quality_scores)),
-                    'min_composite_quality': float(np.min(quality_scores)),
-                    'max_composite_quality': float(np.max(quality_scores)),
-                    'mean_ssim': float(np.mean(ssim_scores)),
-                    'mean_feature_preservation': float(np.mean(feature_scores)),
-                    'high_quality_files': len([q for q in quality_scores if q > 0.8]),
-                    'medium_quality_files': len([q for q in quality_scores if 0.6 <= q <= 0.8]),
-                    'low_quality_files': len([q for q in quality_scores if q < 0.6])
-                }
-                
-                # Seafloor type distribution
-                seafloor_types = [s.get('seafloor_type', 'unknown') for s in processing_stats]
-                seafloor_distribution = {
-                    seafloor_type: seafloor_types.count(seafloor_type) 
-                    for seafloor_type in set(seafloor_types)
-                }
-                
-                # Channel distribution
-                channel_counts = [s.get('input_channels', 1) for s in processing_stats]
-                channel_distribution = {
-                    f"{channels}_channel": channel_counts.count(channels)
-                    for channels in set(channel_counts)
-                }
-            else:
-                summary_stats = {}
-                seafloor_distribution = {}
-                channel_distribution = {}
-            
-            # Create comprehensive report
-            report = {
-                'processing_date': datetime.datetime.now().isoformat(),
-                'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
-                'model_format': 'Keras Native Format',  # New field
-                'configuration': asdict(self.config),
-                'total_files': len(successful_files) + len(failed_files),
-                'successful_files': len(successful_files),
-                'failed_files': len(failed_files),
-                'success_rate': len(successful_files) / (len(successful_files) + len(failed_files)) * 100 if (len(successful_files) + len(failed_files)) > 0 else 0,
-                'processing_time_total': self.processing_stats.get('total_processing_time', 0),
-                'average_processing_time': self.processing_stats.get('total_processing_time', 0) / max(len(successful_files), 1),
-                'summary_statistics': summary_stats,
-                'seafloor_distribution': seafloor_distribution,
-                'channel_distribution': channel_distribution,
-                'successful_file_list': successful_files,
-                'failed_file_list': failed_files,
-                'detailed_stats': processing_stats,
-                'features_enabled': {
-                    'adaptive_processing': self.config.enable_adaptive_processing,
-                    'expert_review': self.config.enable_expert_review,
-                    'constitutional_constraints': self.config.enable_constitutional_constraints,
-                    'ensemble_processing': True,
-                    'modern_keras_format': True  # New feature flag
-                },
-                'performance_metrics': {
-                    'files_per_minute': len(successful_files) / max(self.processing_stats.get('total_processing_time', 1) / 60, 1),
-                    'memory_efficiency': 'optimized',
-                    'gpu_utilization': len(tf.config.list_physical_devices('GPU')) > 0,
-                    'model_format': 'keras_native'  # New metric
-                }
-            }
-            
-            # Save report
-            with open(report_path, 'w') as f:
-                json.dump(report, f, indent=2)
-            
-            # Log enhanced summary
-            self._log_processing_summary(report)
-            
-        except Exception as e:
-            self.logger.error(f"Error generating enhanced summary report: {e}")
-            # Create minimal report on error
-            minimal_report = {
-                'processing_date': datetime.datetime.now().isoformat(),
-                'total_files': len(successful_files) + len(failed_files),
-                'successful_files': len(successful_files),
-                'failed_files': len(failed_files),
-                'error': str(e)
-            }
-            
-            with open(report_path, 'w') as f:
-                json.dump(minimal_report, f, indent=2)
-    
-    def _log_processing_summary(self, report: Dict):
-        """Log comprehensive processing summary."""
-        self.logger.info("\n" + "="*80)
-        self.logger.info("ENHANCED PROCESSING SUMMARY")
-        self.logger.info("="*80)
-        self.logger.info(f"Pipeline Version: {report['pipeline_version']}")
-        self.logger.info(f"Model Format: {report.get('model_format', 'Unknown')}")
-        self.logger.info(f"Processing Date: {report['processing_date']}")
-        self.logger.info("-" * 80)
-        
-        # File statistics
-        self.logger.info("FILE PROCESSING STATISTICS:")
-        self.logger.info(f"  Total files: {report['total_files']}")
-        self.logger.info(f"  Successful: {report['successful_files']}")
-        self.logger.info(f"  Failed: {report['failed_files']}")
-        self.logger.info(f"  Success rate: {report['success_rate']:.1f}%")
-        
-        # Performance statistics
-        if 'processing_time_total' in report:
-            self.logger.info(f"  Total processing time: {report['processing_time_total']:.1f}s")
-            self.logger.info(f"  Average time per file: {report['average_processing_time']:.1f}s")
-        
-        if 'performance_metrics' in report:
-            perf = report['performance_metrics']
-            self.logger.info(f"  Processing rate: {perf['files_per_minute']:.1f} files/minute")
-        
-        # Quality statistics
-        if report.get('summary_statistics'):
-            stats = report['summary_statistics']
-            self.logger.info("-" * 80)
-            self.logger.info("QUALITY STATISTICS:")
-            self.logger.info(f"  Mean composite quality: {stats['mean_composite_quality']:.4f}")
-            self.logger.info(f"  Quality range: {stats['min_composite_quality']:.4f} - {stats['max_composite_quality']:.4f}")
-            self.logger.info(f"  Mean SSIM: {stats['mean_ssim']:.4f}")
-            self.logger.info(f"  Mean feature preservation: {stats['mean_feature_preservation']:.4f}")
-            self.logger.info(f"  High quality files (>0.8): {stats['high_quality_files']}")
-            self.logger.info(f"  Medium quality files (0.6-0.8): {stats['medium_quality_files']}")
-            self.logger.info(f"  Low quality files (<0.6): {stats['low_quality_files']}")
-        
-        # Seafloor distribution
-        if report.get('seafloor_distribution'):
-            self.logger.info("-" * 80)
-            self.logger.info("SEAFLOOR TYPE DISTRIBUTION:")
-            for seafloor_type, count in report['seafloor_distribution'].items():
-                self.logger.info(f"  {seafloor_type}: {count} files")
-        
-        # Channel distribution
-        if report.get('channel_distribution'):
-            self.logger.info("-" * 80)
-            self.logger.info("DATA CHANNEL DISTRIBUTION:")
-            for channel_type, count in report['channel_distribution'].items():
-                self.logger.info(f"  {channel_type}: {count} files")
-        
-        # Features enabled
-        if report.get('features_enabled'):
-            features = report['features_enabled']
-            self.logger.info("-" * 80)
-            self.logger.info("ENABLED FEATURES:")
-            for feature, enabled in features.items():
-                status = "[YES]" if enabled else "[NO] "
-                self.logger.info(f"  {status} {feature.replace('_', ' ').title()}")
-        
-        self.logger.info("="*80)
-        self.logger.info(f"Detailed report saved to: {Path('enhanced_processing_summary.json').absolute()}")
-        
-        if report.get('failed_files'):
-            self.logger.warning(f"Failed files: {report['failed_files']}")
-        
-        self.logger.info("="*80)
-
-
-class PipelineError(Exception):
-    """Custom exception for pipeline errors."""
-    pass
-
-
-class DataConsistencyError(PipelineError):
-    """Exception for data consistency issues."""
-    pass
-
-
-class ProcessingError(PipelineError):
-    """Exception for processing errors."""
-    pass
-    
+            self.
