@@ -38,7 +38,7 @@ This software takes **messy underwater maps** and makes them **clean and accurat
 
 **What is a CAE?**
 - A **Convolutional Autoencoder** is a special type of AI that learns to "compress and reconstruct" data
-- Think of it like a **master puzzle solver** that learns what complete puzzles should look like
+- Think of it like a **master cartographer** that learns what complete, accurate maps should look like
 
 **Why CAE Works Best for Bathymetric Data:**
 
