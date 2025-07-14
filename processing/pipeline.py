@@ -1,6 +1,6 @@
 """
 Enhanced Bathymetric CAE Processing Pipeline v2.0
-Fixed for TensorFlow version compatibility and HDF5 issues.
+Fixed syntax error on line 426 and other potential issues.
 """
 
 import numpy as np
@@ -92,8 +92,9 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.info("="*60)
             
         except Exception as e:
-            self.logger.error(f"Error calculating SSIM: {e}")
-            return 0.0
+            self.logger.error(f"Pipeline failed: {e}")
+            self.logger.debug("Full traceback:", exc_info=True)
+            raise
     
     def _calculate_uncertainty_metrics(self, uncertainty_data: np.ndarray, 
                                      cleaned_data: np.ndarray) -> Dict:
@@ -423,9 +424,7 @@ class EnhancedBathymetricCAEPipeline:
         if report.get('failed_files'):
             self.logger.warning(f"Failed files: {report['failed_files']}")
         
-        self.logger.info("="*80)logger.error(f"Pipeline failed: {e}")
-            self.logger.debug("Full traceback:", exc_info=True)
-            raise
+        self.logger.info("="*80)
     
     def _normalize_model_path(self, model_path: str) -> str:
         """Convert model path to appropriate format based on TensorFlow version."""
@@ -1066,4 +1065,5 @@ class EnhancedBathymetricCAEPipeline:
                 win_size=min(7, min(original.shape[-2:]))
             )
         except Exception as e:
-            self.
+            self.logger.error(f"Error calculating SSIM: {e}")
+            return 0.0
