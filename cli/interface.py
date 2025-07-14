@@ -101,8 +101,11 @@ def update_config_from_args(config: Config, args: argparse.Namespace) -> Config:
         'enable_constitutional': 'enable_constitutional_constraints'
     }
     
+    # Special handling for flags that don't map directly to config
+    special_flags = {'no_gpu', 'save_config', 'config'}
+    
     for key, value in vars(args).items():
-        if value is not None:
+        if value is not None and key not in special_flags:
             # Use mapping if available, otherwise convert dashes
             config_key = arg_mappings.get(key, key.replace('-', '_'))
             
