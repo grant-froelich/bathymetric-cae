@@ -1,5 +1,6 @@
 """
 Model architecture definitions for Enhanced Bathymetric CAE Processing.
+Fixed for channel consistency and Windows compatibility.
 """
 
 import tensorflow as tf
@@ -28,18 +29,18 @@ class AdvancedCAE:
         # Encoder path
         encoded, skip_connections = self._build_encoder(input_layer, variant_config)
         
-        # Decoder path
+        # Decoder path  
         decoded = self._build_decoder((encoded, skip_connections), variant_config, input_shape)
         
         # Create model
         model = models.Model(input_layer, decoded, name=f"AdvancedCAE_v{variant_config.get('version', 1)}")
         
-        # Compile model
+        # Compile model with simple loss to avoid channel issues
         optimizer = tf.keras.optimizers.AdamW(learning_rate=self.config.learning_rate)
         model.compile(
             optimizer=optimizer,
-            loss=self._get_loss_function(),
-            metrics=['mae', 'mse']
+            loss='mse',  # Use simple MSE loss instead of custom loss
+            metrics=['mae']
         )
         
         return model
@@ -113,68 +114,10 @@ class AdvancedCAE:
             x = layers.BatchNormalization()(x)
             x = layers.Dropout(variant_config['dropout_rate'])(x)
         
-        # Output layer
-        output = layers.Conv2D(original_shape[-1], (3, 3), activation='sigmoid', padding='same')(x)
+        # Output layer - always output single channel for depth
+        output = layers.Conv2D(1, (3, 3), activation='linear', padding='same')(x)
         
         return output
-    
-    def _get_loss_function(self):
-        """Get composite loss function for bathymetric data."""
-        def bathymetric_loss(y_true, y_pred):
-            # MSE for reconstruction
-            mse_loss = tf.keras.losses.mse(y_true, y_pred)
-            
-            # Edge preservation loss
-            edge_loss = self._edge_preservation_loss(y_true, y_pred)
-            
-            # Depth consistency loss
-            consistency_loss = self._depth_consistency_loss(y_true, y_pred)
-            
-            # Combine losses
-            total_loss = mse_loss + 0.1 * edge_loss + 0.05 * consistency_loss
-            
-            return total_loss
-        
-        return bathymetric_loss
-    
-    def _edge_preservation_loss(self, y_true, y_pred):
-        """Calculate edge preservation loss using Sobel filters."""
-        # Sobel filters for edge detection
-        sobel_x = tf.constant([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=tf.float32)
-        sobel_y = tf.constant([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=tf.float32)
-        
-        sobel_x = tf.reshape(sobel_x, [3, 3, 1, 1])
-        sobel_y = tf.reshape(sobel_y, [3, 3, 1, 1])
-        
-        # Calculate edges
-        edges_true_x = tf.nn.conv2d(y_true, sobel_x, strides=[1, 1, 1, 1], padding='SAME')
-        edges_true_y = tf.nn.conv2d(y_true, sobel_y, strides=[1, 1, 1, 1], padding='SAME')
-        edges_pred_x = tf.nn.conv2d(y_pred, sobel_x, strides=[1, 1, 1, 1], padding='SAME')
-        edges_pred_y = tf.nn.conv2d(y_pred, sobel_y, strides=[1, 1, 1, 1], padding='SAME')
-        
-        edge_loss = tf.reduce_mean(tf.square(edges_true_x - edges_pred_x)) + \
-                   tf.reduce_mean(tf.square(edges_true_y - edges_pred_y))
-        
-        return edge_loss
-    
-    def _depth_consistency_loss(self, y_true, y_pred):
-        """Calculate local depth consistency loss."""
-        # Local variance loss
-        kernel = tf.ones([3, 3, 1, 1]) / 9.0
-        
-        # Calculate local means
-        local_mean_true = tf.nn.conv2d(y_true, kernel, strides=[1, 1, 1, 1], padding='SAME')
-        local_mean_pred = tf.nn.conv2d(y_pred, kernel, strides=[1, 1, 1, 1], padding='SAME')
-        
-        # Calculate local variances
-        var_true = tf.nn.conv2d(tf.square(y_true - local_mean_true), kernel, 
-                               strides=[1, 1, 1, 1], padding='SAME')
-        var_pred = tf.nn.conv2d(tf.square(y_pred - local_mean_pred), kernel,
-                               strides=[1, 1, 1, 1], padding='SAME')
-        
-        consistency_loss = tf.reduce_mean(tf.square(var_true - var_pred))
-        
-        return consistency_loss
 
 
 class UncertaintyCAE(AdvancedCAE):
@@ -205,12 +148,12 @@ class UncertaintyCAE(AdvancedCAE):
             name="UncertaintyCAE"
         )
         
-        # ✅ FIXED: Compile with proper list format for multiple outputs
+        # Compile with proper list format for multiple outputs
         optimizer = tf.keras.optimizers.AdamW(learning_rate=self.config.learning_rate)
         model.compile(
             optimizer=optimizer,
-            loss=['mse', 'mse'],  # ✅ FIXED: Use list instead of dict
-            loss_weights=[1.0, 0.1],  # ✅ FIXED: Use list instead of dict
+            loss=['mse', 'mse'],  # Use list for multiple outputs
+            loss_weights=[1.0, 0.1],  # Use list for multiple outputs
             metrics=['mae']
         )
         
@@ -266,8 +209,8 @@ class LightweightCAE(AdvancedCAE):
             x = layers.Conv2DTranspose(filters, (3, 3), strides=(2, 2),
                                      activation='relu', padding='same')(x)
         
-        # Output
-        output = layers.Conv2D(input_shape[-1], (3, 3), activation='sigmoid', padding='same')(x)
+        # Output - single channel
+        output = layers.Conv2D(1, (3, 3), activation='linear', padding='same')(x)
         
         model = models.Model(input_layer, output, name="LightweightCAE")
         
@@ -298,28 +241,39 @@ def get_model_variants_for_ensemble(config: Config, input_shape: tuple) -> list:
     """Get diverse model variants for ensemble."""
     variants = []
     
-    # Advanced variant
-    variants.append(create_model_variant(config, 'advanced', input_shape, {
-        'base_filters': config.base_filters,
-        'depth': config.depth,
-        'dropout_rate': config.dropout_rate,
-        'version': 1
-    }))
-    
-    # Wider variant
-    variants.append(create_model_variant(config, 'advanced', input_shape, {
-        'base_filters': int(config.base_filters * 1.5),
-        'depth': max(2, config.depth - 1),
-        'dropout_rate': config.dropout_rate * 0.8,
-        'version': 2
-    }))
-    
-    # Deeper variant
-    variants.append(create_model_variant(config, 'advanced', input_shape, {
-        'base_filters': max(16, config.base_filters // 2),
-        'depth': config.depth + 1,
-        'dropout_rate': config.dropout_rate * 1.2,
-        'version': 3
-    }))
+    # For small ensemble sizes, use lightweight models
+    if config.ensemble_size == 1:
+        variants.append(create_model_variant(config, 'lightweight', input_shape, {
+            'base_filters': config.base_filters,
+            'depth': max(2, config.depth - 1),
+            'dropout_rate': config.dropout_rate,
+            'version': 1
+        }))
+    else:
+        # Advanced variant
+        variants.append(create_model_variant(config, 'advanced', input_shape, {
+            'base_filters': config.base_filters,
+            'depth': config.depth,
+            'dropout_rate': config.dropout_rate,
+            'version': 1
+        }))
+        
+        # Wider variant
+        if len(variants) < config.ensemble_size:
+            variants.append(create_model_variant(config, 'advanced', input_shape, {
+                'base_filters': int(config.base_filters * 1.5),
+                'depth': max(2, config.depth - 1),
+                'dropout_rate': config.dropout_rate * 0.8,
+                'version': 2
+            }))
+        
+        # Deeper variant
+        if len(variants) < config.ensemble_size:
+            variants.append(create_model_variant(config, 'advanced', input_shape, {
+                'base_filters': max(16, config.base_filters // 2),
+                'depth': config.depth + 1,
+                'dropout_rate': config.dropout_rate * 1.2,
+                'version': 3
+            }))
     
     return variants[:config.ensemble_size]
