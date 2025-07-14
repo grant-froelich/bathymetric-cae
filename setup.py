@@ -9,28 +9,52 @@ from setuptools import setup, find_packages
 from pathlib import Path
 
 # Read README for long description
-this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text()
+def get_long_description():
+    """Get long description from README.md if it exists."""
+    this_directory = Path(__file__).parent
+    readme_path = this_directory / "README.md"
+    
+    if readme_path.exists():
+        try:
+            return readme_path.read_text(encoding='utf-8')
+        except Exception as e:
+            print(f"Warning: Could not read README.md: {e}")
+            return ""
+    else:
+        return ""
 
 # Check if we're in a conda environment
 def is_conda_environment():
     """Check if we're running in a conda environment."""
-    return ('CONDA_DEFAULT_ENV' in os.environ or 
-            'CONDA_PREFIX' in os.environ or
-            os.path.exists(os.path.join(sys.prefix, 'conda-meta')))
+    return (
+        'CONDA_DEFAULT_ENV' in os.environ or 
+        'CONDA_PREFIX' in os.environ or
+        os.path.exists(os.path.join(sys.prefix, 'conda-meta')) or
+        'conda' in sys.version.lower()
+    )
 
 # Read base requirements
-requirements = []
-with open('requirements.txt') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#'):
-            # Skip GDAL-related packages if in conda environment
-            if is_conda_environment() and any(pkg in line.lower() for pkg in ['gdal', 'rasterio', 'opencv']):
-                continue
-            requirements.append(line)
+def get_requirements():
+    """Read requirements from requirements.txt if it exists."""
+    requirements = []
+    req_file = Path('requirements.txt')
+    
+    if req_file.exists():
+        try:
+            with open(req_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        # Skip GDAL-related packages if in conda environment
+                        if is_conda_environment() and any(pkg in line.lower() for pkg in ['gdal', 'rasterio', 'opencv']):
+                            continue
+                        requirements.append(line)
+        except Exception as e:
+            print(f"Warning: Could not read requirements.txt: {e}")
+    
+    return requirements
 
-# Conditional requirements based on environment
+# Get install requirements based on environment
 def get_install_requires():
     """Get install requirements based on environment."""
     base_requirements = [
@@ -43,25 +67,58 @@ def get_install_requires():
         "seaborn>=0.11.0",
         "joblib>=1.1.0",
         "psutil>=5.8.0",
-        "pathlib2>=2.3.0",
     ]
+    
+    # Add pathlib2 only for Python < 3.4 (though we require 3.8+)
+    if sys.version_info < (3, 4):
+        base_requirements.append("pathlib2>=2.3.0")
     
     # Add geospatial packages only if not in conda environment
     if not is_conda_environment():
-        print("⚠️  Warning: Installing without conda may cause GDAL issues.")
+        print("Warning: Installing without conda may cause GDAL issues.")
         print("   Recommended: conda env create -f environment.yml")
         geospatial_requirements = [
             "opencv-python>=4.5.0",
-            # Note: GDAL and rasterio commented out due to installation complexity
-            # "GDAL>=3.4.0",  # Uncomment if system GDAL is installed
-            # "rasterio>=1.3.0",  # Uncomment if system GDAL is installed
+            # Note: GDAL and rasterio are in extras_require['gdal']
         ]
         base_requirements.extend(geospatial_requirements)
     
+    # Add requirements from requirements.txt
+    base_requirements.extend(get_requirements())
+    
     return base_requirements
 
+# Get version from __init__.py or version.py
+def get_version():
+    """Get version from package."""
+    try:
+        # Try to read from __init__.py
+        init_file = Path('bathymetric_cae') / '__init__.py'
+        if init_file.exists():
+            with open(init_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('__version__'):
+                        return line.split('=')[1].strip().strip('"\'')
+        
+        # Try to read from version.py
+        version_file = Path('bathymetric_cae') / 'version.py'
+        if version_file.exists():
+            with open(version_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('VERSION'):
+                        return line.split('=')[1].strip().strip('"\'')
+                    
+    except Exception as e:
+        print(f"Warning: Could not read version: {e}")
+    
+    return "2.0.0"  # Fallback version
+
 # Enhanced long description with installation guidance
-enhanced_long_description = long_description + """
+def get_enhanced_long_description():
+    """Get enhanced long description with installation guidance."""
+    base_description = get_long_description()
+    
+    installation_guide = """
 
 ## Installation
 
@@ -88,27 +145,67 @@ pip install bathymetric-cae
 - **macOS:** `brew install gdal`
 - **Windows:** Use conda installation (recommended)
 
+### With GDAL support (pip only)
+
+```bash
+pip install bathymetric-cae[gdal]
+```
+
+### Complete installation with all dependencies
+
+```bash
+pip install bathymetric-cae[complete]
+```
+
 ### Verification
 
 ```python
 # Test installation
-from osgeo import gdal
-import enhanced_bathymetric_cae
+try:
+    from osgeo import gdal
+    print("GDAL available!")
+except ImportError:
+    print("GDAL not available - some features may be limited")
+
+import bathymetric_cae
 print("Installation successful!")
 ```
-
 """
+    
+    return base_description + installation_guide
+
+# Custom command to print post-install message
+class PostInstallCommand:
+    """Custom command to print helpful message after installation."""
+    
+    @staticmethod
+    def print_message():
+        """Print helpful message after installation."""
+        if is_conda_environment():
+            print("\nInstallation completed in conda environment!")
+            print("   GDAL and geospatial dependencies should be available.")
+        else:
+            print("\nInstallation completed with pip.")
+            print("   For best GDAL support, consider using conda:")
+            print("   conda env create -f environment.yml")
+            print("   conda activate bathymetric-cae")
+        
+        print("\nTest your installation:")
+        print("   bathymetric-cae --version")
+        print("   python -c \"from osgeo import gdal; print('GDAL OK')\"")
+        print("\nDocumentation:")
+        print("   https://github.com/noaa-ocs-hydrography/bathymetric-cae/docs")
 
 setup(
     name="bathymetric-cae",
-    version="2.0.0",
+    version=get_version(),
     author="Grant Froelich",
     author_email="grant.froelich@noaa.gov",
     description="Advanced bathymetric grid processing using ensemble Convolutional Autoencoders",
-    long_description=enhanced_long_description,
+    long_description=get_enhanced_long_description(),
     long_description_content_type="text/markdown",
     url="https://github.com/noaa-ocs-hydrography/bathymetric-cae",
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests*', 'docs*']),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
@@ -158,28 +255,27 @@ setup(
             "mkdocs-material>=8.0.0",
             "mkdocs-git-revision-date-localized-plugin>=1.0.0",
         ],
-        # Fallback option for pip-only installation
         "gdal": [
             "GDAL>=3.4.0",
             "rasterio>=1.3.0",
         ],
-        # Complete installation (discouraged without conda)
         "complete": [
             "GDAL>=3.4.0",
             "rasterio>=1.3.0",
             "pyproj>=3.3.0",
             "fiona>=1.8.0",
             "geopandas>=0.12.0",
+            "opencv-python>=4.5.0",
         ],
     },
     entry_points={
         "console_scripts": [
-            "bathymetric-cae=main:main",
+            "bathymetric-cae=bathymetric_cae.main:main",
         ],
     },
     include_package_data=True,
     package_data={
-        "": ["*.json", "*.yaml", "*.yml", "*.md"],
+        "bathymetric_cae": ["*.json", "*.yaml", "*.yml", "*.md"],
         "tests": ["test_fixtures/*", "factories/*", "utils/*"],
         "docs": ["**/*"],
     },
@@ -203,32 +299,8 @@ setup(
         "Docker": "https://github.com/noaa-ocs-hydrography/bathymetric-cae/blob/main/Dockerfile.conda",
     },
     zip_safe=False,
-    
-    # Custom installation message
-    cmdclass={},
 )
 
-# Post-installation message
-def print_post_install_message():
-    """Print helpful message after installation."""
-    if is_conda_environment():
-        print("\n✅ Installation completed in conda environment!")
-        print("   GDAL and geospatial dependencies should be available.")
-    else:
-        print("\n⚠️  Installation completed with pip.")
-        print("   For best GDAL support, consider using conda:")
-        print("   conda env create -f environment.yml")
-        print("   conda activate bathymetric-cae")
-    
-    print("\n🧪 Test your installation:")
-    print("   bathymetric-cae --version")
-    print("   python -c \"from osgeo import gdal; print('GDAL OK')\"")
-    print("\n📚 Documentation:")
-    print("   https://github.com/noaa-ocs-hydrography/bathymetric-cae/docs")
-
-# Print message if this is being run directly
+# Print post-install message
 if __name__ == "__main__":
-    # Don't print during build/install, only during direct execution
-    if len(sys.argv) > 1 and 'install' in sys.argv:
-        import atexit
-        atexit.register(print_post_install_message)
+    PostInstallCommand.print_message()
