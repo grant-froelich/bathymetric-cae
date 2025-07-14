@@ -58,29 +58,6 @@ Depth readings: -45m, -46m, -46m, -47m, -47m, -48m, -48m
 
 ---
 
-## 🎯 Who Uses This?
-
-### 🚢 **Hydrographic Surveyors**
-- Create accurate nautical charts for ship navigation
-- Map harbors and shipping channels
-- Survey underwater infrastructure
-
-### 🔬 **Marine Scientists** 
-- Study ocean floor geology
-- Track seafloor changes over time
-- Research underwater ecosystems
-
-### 🏗️ **Offshore Engineers**
-- Plan underwater cable routes
-- Design offshore wind farms  
-- Survey pipeline paths
-
-### 🏛️ **Government Agencies**
-- NOAA (ocean mapping)
-- Navy (submarine navigation)
-- Coast Guard (search and rescue)
-
----
 
 ## 💻 What File Types Does It Handle?
 
@@ -93,17 +70,6 @@ Depth readings: -45m, -46m, -46m, -47m, -47m, -48m, -48m
 
 ---
 
-## 🚀 How Fast Is It?
-
-| Dataset Size | Processing Time | Quality Improvement |
-|--------------|----------------|-------------------|
-| **Small** (< 1GB) | 2-5 minutes | 15-25% better |
-| **Medium** (1-10GB) | 15-45 minutes | 20-35% better |
-| **Large** (> 10GB) | 1-4 hours | 25-40% better |
-
-*Times with GPU acceleration. CPU-only takes 3-5x longer.*
-
----
 
 ## 🎯 Key Features
 
@@ -134,24 +100,6 @@ Depth readings: -45m, -46m, -46m, -47m, -47m, -48m, -48m
 
 ---
 
-## 🌊 Real-World Impact
-
-### ⛵ **Safer Navigation**
-- Cleaner depth charts mean fewer ship groundings
-- More accurate harbor and channel surveys
-- Better emergency response planning
-
-### 🔬 **Better Science**
-- More accurate seafloor geology research
-- Improved climate and ocean models
-- Better understanding of underwater ecosystems
-
-### 💰 **Cost Savings**
-- Reduces need for repeat surveys
-- Enables automated processing of large datasets
-- Improves efficiency of marine operations
-
----
 
 ## 🎯 In One Sentence
 
