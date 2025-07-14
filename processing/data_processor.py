@@ -12,14 +12,18 @@ from utils.memory_utils import memory_monitor
 
 try:
     from osgeo import gdal
+    # Explicitly configure GDAL exception handling
+    gdal.UseExceptions()  # Enable exceptions for better error handling
     GDAL_AVAILABLE = True
 except ImportError:
     try:
         import gdal
+        gdal.UseExceptions()  # Enable exceptions
         GDAL_AVAILABLE = True
     except ImportError:
         GDAL_AVAILABLE = False
         logging.warning("GDAL not available - some file formats will not be supported")
+
 
 
 class BathymetricProcessor:

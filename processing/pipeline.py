@@ -1,6 +1,6 @@
 """
 Enhanced Bathymetric CAE Processing Pipeline v2.0
-Main processing pipeline with comprehensive error handling and channel consistency.
+Main processing pipeline with modern Keras format support and comprehensive error handling.
 """
 
 import numpy as np
@@ -28,7 +28,7 @@ from utils.visualization import create_enhanced_visualization, plot_training_his
 
 
 class EnhancedBathymetricCAEPipeline:
-    """Enhanced processing pipeline with comprehensive error handling and channel consistency."""
+    """Enhanced processing pipeline with modern Keras format support."""
     
     def __init__(self, config: Config):
         self.config = config
@@ -48,7 +48,7 @@ class EnhancedBathymetricCAEPipeline:
         }
     
     def run(self, input_folder: str, output_folder: str, model_path: str):
-        """Run the enhanced processing pipeline with comprehensive error handling."""
+        """Run the enhanced processing pipeline with modern model format."""
         try:
             self.logger.info("="*60)
             self.logger.info("ENHANCED BATHYMETRIC CAE PIPELINE v2.0")
@@ -70,7 +70,7 @@ class EnhancedBathymetricCAEPipeline:
             channel_analysis = self._analyze_data_channels(file_list)
             self.logger.info(f"Data channel analysis: {channel_analysis}")
             
-            # Train or load ensemble
+            # Train or load ensemble with modern format
             ensemble_models = self._get_or_train_ensemble(model_path, file_list, channel_analysis)
             
             # Process files with enhanced features
@@ -91,6 +91,101 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.error(f"Pipeline failed: {e}")
             self.logger.debug("Full traceback:", exc_info=True)
             raise
+    
+    def _normalize_model_path(self, model_path: str) -> str:
+        """Convert model path to modern Keras format."""
+        if model_path.endswith('.h5'):
+            model_path = model_path.replace('.h5', '.keras')
+        elif not model_path.endswith('.keras'):
+            model_path += '.keras'
+        
+        self.logger.debug(f"Using modern Keras format: {model_path}")
+        return model_path
+    
+    def _get_ensemble_model_paths(self, base_model_path: str, ensemble_size: int) -> List[str]:
+        """Get ensemble model paths with modern format."""
+        base_path = self._normalize_model_path(base_model_path)
+        base_name = base_path.replace('.keras', '')
+        
+        return [f"{base_name}_ensemble_{i}.keras" for i in range(ensemble_size)]
+    
+    def _get_or_train_ensemble(self, model_path: str, file_list: List[Path], 
+                              channel_analysis: Dict):
+        """Load or train ensemble with modern Keras format support."""
+        try:
+            # Get ensemble model paths
+            ensemble_paths = self._get_ensemble_model_paths(model_path, self.config.ensemble_size)
+            ensemble_models = []
+            
+            # Try to load existing models (support both formats for backward compatibility)
+            for i, keras_path in enumerate(ensemble_paths):
+                legacy_h5_path = keras_path.replace('.keras', '.h5')
+                
+                if Path(keras_path).exists():
+                    # Load modern Keras format
+                    self.logger.debug(f"Loading modern format: {keras_path}")
+                    model = load_model(keras_path)
+                    ensemble_models.append(model)
+                elif Path(legacy_h5_path).exists():
+                    # Load legacy H5 format and save as modern format
+                    self.logger.info(f"Converting legacy model {legacy_h5_path} to modern format")
+                    model = load_model(legacy_h5_path)
+                    model.save(keras_path)  # Save in modern format
+                    ensemble_models.append(model)
+                    # Optionally remove old file
+                    # Path(legacy_h5_path).unlink()
+                else:
+                    break
+            
+            if len(ensemble_models) == self.config.ensemble_size:
+                self.ensemble.models = ensemble_models
+                self.logger.info(f"Loaded existing ensemble of {len(ensemble_models)} models")
+                return ensemble_models
+            else:
+                self.logger.info("Incomplete ensemble found, training new ensemble")
+                return self._train_ensemble(model_path, file_list, channel_analysis)
+            
+        except Exception as e:
+            self.logger.info(f"Creating new ensemble (could not load existing): {e}")
+            return self._train_ensemble(model_path, file_list, channel_analysis)
+    
+    def _setup_callbacks(self, model_path: str) -> List[callbacks.Callback]:
+        """Setup training callbacks with modern Keras format."""
+        
+        # Ensure modern format
+        model_path = self._normalize_model_path(model_path)
+        
+        callback_list = [
+            callbacks.TensorBoard(
+                log_dir=self.config.log_dir,
+                histogram_freq=1,
+                write_graph=True,
+                write_images=False  # Reduce memory usage
+            ),
+            callbacks.EarlyStopping(
+                monitor='val_loss',
+                patience=self.config.early_stopping_patience,
+                restore_best_weights=True,
+                verbose=1
+            ),
+            callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=self.config.reduce_lr_factor,
+                patience=self.config.reduce_lr_patience,
+                min_lr=self.config.min_lr,
+                verbose=1
+            ),
+            callbacks.ModelCheckpoint(
+                model_path,
+                monitor='val_loss',
+                save_best_only=True,
+                verbose=1,
+                save_format='keras'  # Explicitly use modern format
+            ),
+            callbacks.CSVLogger(f'{model_path.replace(".keras", "_training_log.csv")}')
+        ]
+        
+        return callback_list
     
     def _setup_environment(self):
         """Setup processing environment with optimization."""
@@ -225,35 +320,9 @@ class EnhancedBathymetricCAEPipeline:
             'failed_files': failed_files
         }
     
-    def _get_or_train_ensemble(self, model_path: str, file_list: List[Path], 
-                              channel_analysis: Dict):
-        """Get existing ensemble or train new one with channel consistency."""
-        try:
-            # Try to load existing ensemble
-            ensemble_models = []
-            for i in range(self.config.ensemble_size):
-                model_file = f"{model_path}_ensemble_{i}.h5"
-                if Path(model_file).exists():
-                    model = load_model(model_file, compile=False)
-                    ensemble_models.append(model)
-                else:
-                    break
-            
-            if len(ensemble_models) == self.config.ensemble_size:
-                self.ensemble.models = ensemble_models
-                self.logger.info(f"Loaded existing ensemble of {len(ensemble_models)} models")
-                return ensemble_models
-            else:
-                self.logger.info("Incomplete ensemble found, training new ensemble")
-                return self._train_ensemble(model_path, file_list, channel_analysis)
-            
-        except Exception as e:
-            self.logger.info(f"Creating new ensemble (could not load existing): {e}")
-            return self._train_ensemble(model_path, file_list, channel_analysis)
-    
     def _train_ensemble(self, model_path: str, file_list: List[Path], 
                        channel_analysis: Dict):
-        """Train new ensemble of models with consistent channel handling."""
+        """Train new ensemble of models with modern Keras format."""
         self.logger.info("Training new ensemble models...")
         
         # Determine model parameters from channel analysis
@@ -268,12 +337,13 @@ class EnhancedBathymetricCAEPipeline:
         
         # Train each model in ensemble
         training_start_time = datetime.datetime.now()
+        ensemble_paths = self._get_ensemble_model_paths(model_path, self.config.ensemble_size)
         
-        for i, model in enumerate(ensemble_models):
+        for i, (model, model_path) in enumerate(zip(ensemble_models, ensemble_paths)):
             self.logger.info(f"Training ensemble model {i+1}/{len(ensemble_models)}")
             
             # Setup callbacks for this model
-            model_callbacks = self._setup_callbacks(f"{model_path}_ensemble_{i}.h5")
+            model_callbacks = self._setup_callbacks(model_path)
             
             # Train model with memory monitoring
             with memory_monitor(f"Training ensemble model {i+1}"):
@@ -416,42 +486,9 @@ class EnhancedBathymetricCAEPipeline:
         
         return input_data
     
-    def _setup_callbacks(self, model_path: str) -> List[callbacks.Callback]:
-        """Setup training callbacks with comprehensive monitoring."""
-        callback_list = [
-            callbacks.TensorBoard(
-                log_dir=self.config.log_dir,
-                histogram_freq=1,
-                write_graph=True,
-                write_images=False  # Reduce memory usage
-            ),
-            callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=self.config.early_stopping_patience,
-                restore_best_weights=True,
-                verbose=1
-            ),
-            callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=self.config.reduce_lr_factor,
-                patience=self.config.reduce_lr_patience,
-                min_lr=self.config.min_lr,
-                verbose=1
-            ),
-            callbacks.ModelCheckpoint(
-                model_path,
-                monitor='val_loss',
-                save_best_only=True,
-                verbose=1
-            ),
-            callbacks.CSVLogger(f'{model_path}_training_log.csv')
-        ]
-        
-        return callback_list
-    
     def _process_files_enhanced(self, ensemble_models: List, file_list: List[Path], 
                                output_folder: str):
-        """Process files using enhanced ensemble approach with comprehensive error handling."""
+        """Process files using enhanced ensemble approach with modern format support."""
         output_path = Path(output_folder)
         processor = BathymetricProcessor(self.config)
         
@@ -506,10 +543,10 @@ class EnhancedBathymetricCAEPipeline:
                 self.logger.info(f"Completed {file_path.name} in {file_duration:.1f}s "
                                f"(Quality: {stats.get('composite_quality', 0):.3f})")
                 
-                # Memory management
+                # Memory management with modern TF cleanup
                 if i % 5 == 0:
                     gc.collect()
-                    tf.keras.backend.clear_session()
+                    tf.keras.backend.clear_session()  # Modern TF cleanup
                     log_memory_usage(f"After processing {i} files")
                 
             except Exception as e:
@@ -525,7 +562,7 @@ class EnhancedBathymetricCAEPipeline:
         total_duration = (processing_end_time - processing_start_time).total_seconds()
         self.processing_stats['total_processing_time'] = total_duration
         
-        # Final cleanup
+        # Final cleanup with modern TF
         gc.collect()
         tf.keras.backend.clear_session()
         
@@ -751,6 +788,7 @@ class EnhancedBathymetricCAEPipeline:
                 'PROCESSING_DATE': datetime.datetime.now().isoformat(),
                 'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0',
                 'MODEL_TYPE': 'Ensemble Convolutional Autoencoder',
+                'MODEL_FORMAT': 'Keras Native Format',  # New metadata
                 'ENSEMBLE_SIZE': str(self.config.ensemble_size),
                 'GRID_SIZE': str(self.config.grid_size),
                 'COMPOSITE_QUALITY': f"{quality_metrics.get('composite_quality', 0):.4f}",
@@ -841,6 +879,7 @@ class EnhancedBathymetricCAEPipeline:
             stats_report = {
                 'generation_date': datetime.datetime.now().isoformat(),
                 'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
+                'model_format': 'Keras Native Format',  # New field
                 'processing_statistics': self.processing_stats,
                 'configuration': asdict(self.config)
             }
@@ -901,6 +940,7 @@ class EnhancedBathymetricCAEPipeline:
             report = {
                 'processing_date': datetime.datetime.now().isoformat(),
                 'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
+                'model_format': 'Keras Native Format',  # New field
                 'configuration': asdict(self.config),
                 'total_files': len(successful_files) + len(failed_files),
                 'successful_files': len(successful_files),
@@ -918,12 +958,14 @@ class EnhancedBathymetricCAEPipeline:
                     'adaptive_processing': self.config.enable_adaptive_processing,
                     'expert_review': self.config.enable_expert_review,
                     'constitutional_constraints': self.config.enable_constitutional_constraints,
-                    'ensemble_processing': True
+                    'ensemble_processing': True,
+                    'modern_keras_format': True  # New feature flag
                 },
                 'performance_metrics': {
                     'files_per_minute': len(successful_files) / max(self.processing_stats.get('total_processing_time', 1) / 60, 1),
                     'memory_efficiency': 'optimized',
-                    'gpu_utilization': len(tf.config.list_physical_devices('GPU')) > 0
+                    'gpu_utilization': len(tf.config.list_physical_devices('GPU')) > 0,
+                    'model_format': 'keras_native'  # New metric
                 }
             }
             
@@ -954,6 +996,7 @@ class EnhancedBathymetricCAEPipeline:
         self.logger.info("ENHANCED PROCESSING SUMMARY")
         self.logger.info("="*80)
         self.logger.info(f"Pipeline Version: {report['pipeline_version']}")
+        self.logger.info(f"Model Format: {report.get('model_format', 'Unknown')}")
         self.logger.info(f"Processing Date: {report['processing_date']}")
         self.logger.info("-" * 80)
         
@@ -1031,3 +1074,4 @@ class DataConsistencyError(PipelineError):
 class ProcessingError(PipelineError):
     """Exception for processing errors."""
     pass
+    
