@@ -1,5 +1,5 @@
 """
-Memory management and monitoring utilities.
+Memory management and monitoring utilities - Windows compatible.
 """
 
 import logging
@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 @contextmanager
 def memory_monitor(operation_name: str):
-    """Context manager to monitor memory usage."""
+    """Context manager to monitor memory usage - Windows compatible."""
     process = psutil.Process()
     start_memory = process.memory_info().rss / 1024 / 1024  # MB
     
@@ -19,7 +19,8 @@ def memory_monitor(operation_name: str):
     finally:
         end_memory = process.memory_info().rss / 1024 / 1024  # MB
         memory_diff = end_memory - start_memory
-        logging.info(f"{operation_name} - Memory: {start_memory:.1f}MB → {end_memory:.1f}MB "
+        # Use simple ASCII characters instead of Unicode arrows
+        logging.info(f"{operation_name} - Memory: {start_memory:.1f}MB -> {end_memory:.1f}MB "
                     f"({memory_diff:+.1f}MB)")
 
 def log_memory_usage(operation_name: str = "Current"):
