@@ -1006,7 +1006,7 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.info("-" * 80)
             self.logger.info("ENABLED FEATURES:")
             for feature, enabled in features.items():
-                status = "✓" if enabled else "✗"
+                status = "[YES]" if enabled else "[NO] "
                 self.logger.info(f"  {status} {feature.replace('_', ' ').title()}")
         
         self.logger.info("="*80)
