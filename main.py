@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced Bathymetric CAE Processing - Main Entry Point
-Updated with modern Keras format support and warning suppression.
+Updated with OpenCV/HDF5 compatibility fixes and better error handling.
 """
 
 # ============================================================================
@@ -17,7 +17,8 @@ os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
-
+# OpenCV environment fixes
+os.environ.setdefault('OPENCV_IO_MAX_IMAGE_PIXELS', str(2**31-1))
 
 import os
 import sys
@@ -41,6 +42,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', message='.*GDAL.*')
 warnings.filterwarnings('ignore', message='.*HDF5.*')
 warnings.filterwarnings('ignore', message='.*legacy.*')
+warnings.filterwarnings('ignore', message='.*OpenCV.*')
 
 # GDAL Exception handling (prevents FutureWarning)
 try:
@@ -150,6 +152,11 @@ def validate_environment():
         import numpy as np
         import matplotlib
         matplotlib.use('Agg')  # Non-interactive backend
+        
+        # Check scipy for ndimage (replaces OpenCV)
+        import scipy.ndimage
+        logging.info("Using scipy.ndimage for image processing (OpenCV-free)")
+        
     except ImportError as e:
         issues.append(f"Missing essential package: {e}")
     
@@ -162,7 +169,7 @@ def validate_environment():
 
 
 def main():
-    """Enhanced main function with modern Keras format support and comprehensive error handling."""
+    """Enhanced main function with OpenCV-free processing and better error handling."""
     # Parse arguments
     parser = create_argument_parser()
     args = parser.parse_args()
@@ -207,6 +214,7 @@ def main():
         logger.info(f"TensorFlow version: {tf.__version__}")
         logger.info(f"GPU available: {len(tf.config.list_physical_devices('GPU')) > 0}")
         logger.info(f"Model format: {config.model_format.upper()} ({config.get_model_extension()})")
+        logger.info(f"OpenCV-free processing: ENABLED (using scipy.ndimage)")
         
         # Validate environment
         if not validate_environment():
@@ -228,6 +236,7 @@ def main():
             features_enabled.append("Constitutional Constraints")
         if config.is_modern_format():
             features_enabled.append("Modern Keras Format")
+        features_enabled.append("OpenCV-Free Processing")
         
         logger.info(f"Enhanced features enabled: {', '.join(features_enabled) if features_enabled else 'None'}")
         
@@ -324,6 +333,7 @@ if __name__ == "__main__":
         elif sys.argv[1] == "--version":
             print("Enhanced Bathymetric CAE Processing v2.0")
             print("Modern Keras Format Support: ✅")
+            print("OpenCV-Free Processing: ✅")
             print("Warning Suppression: ✅")
             sys.exit(0)
     
