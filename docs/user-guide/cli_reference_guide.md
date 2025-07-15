@@ -18,10 +18,47 @@ Complete guide to command line options, usage patterns, and best practices for t
 ## 📋 Quick Reference Table
 
 | Option | Type | Default | Range | Purpose |
-|--------|------|---------|-------|---------|
+|## 💾 Model File Format Information
+
+The Enhanced Bathymetric CAE system supports both modern and legacy model formats:
+
+### **Modern Format (Recommended): `.keras`**
+- **Default**: All new models saved in `.keras` format
+- **TensorFlow Version**: 2.13+ native format
+- **Benefits**: Better compatibility, metadata preservation, faster loading
+- **File Extension**: `.keras`
+
+### **Legacy Format (Backward Compatibility): `.h5`**
+- **Support**: Full backward compatibility maintained
+- **Auto-Conversion**: Legacy `.h5` models automatically converted to `.keras`
+- **Use Case**: Loading existing models from older versions
+- **File Extension**: `.h5`
+
+### **Migration Behavior**
+```bash
+# Loading legacy model - automatically converts
+bathymetric-cae --model old_model.h5
+# System creates: old_model.keras (modern format)
+
+# Explicitly specify format in filename
+bathymetric-cae --model new_model.keras  # Uses modern format
+bathymetric-cae --model legacy_model.h5  # Loads and converts to .keras
+```
+
+### **Ensemble Model Naming**
+For ensemble processing, models are automatically numbered:
+```bash
+# Base model: survey_model.keras
+# Ensemble creates:
+#   survey_model_ensemble_0.keras
+#   survey_model_ensemble_1.keras  
+#   survey_model_ensemble_2.keras
+```
+
+--------|------|---------|-------|---------|
 | `--input` | Path | `\\network_folder\input_bathymetric_files` | - | Input directory |
 | `--output` | Path | `\\network_folder\output_bathymetric_files` | - | Output directory |
-| `--model` | Path | `cae_model_with_uncertainty.keras` | - | Model file path |
+| `--model` | Path | `cae_model_with_uncertainty.keras` | .keras/.h5 | Model file path |
 | `--config` | Path | None | - | Load config file |
 | `--save-config` | Path | None | - | Save config file |
 | `--epochs` | Integer | 100 | 10-500 | Training iterations |
@@ -127,24 +164,37 @@ bathymetric-cae --output "\\storage\processed_surveys"
 ### `--model` / `--model-path`
 **Purpose**: Path to save/load the trained AI model  
 **Type**: String (path)  
-**Default**: `cae_model_with_uncertainty.keras`
+**Default**: `cae_model_with_uncertainty.keras`  
+**Supported Formats**: `.keras` (modern, recommended), `.h5` (legacy)
 
 **Examples**:
 ```bash
-# Custom model path
+# Modern Keras format (recommended)
 bathymetric-cae --model models/survey_2024_model.keras
 
-# Load existing model
-bathymetric-cae --model trained_models/coastal_model.keras
+# Legacy H5 format (auto-converted to .keras)
+bathymetric-cae --model trained_models/coastal_model.h5
 
-# Timestamped model
+# Timestamped model with modern format
 bathymetric-cae --model "models/model_$(date +%Y%m%d).keras"
+
+# Ensemble models (automatically numbered)
+bathymetric-cae --model models/ensemble_base.keras --ensemble-size 3
+# Creates: ensemble_base_ensemble_0.keras, ensemble_base_ensemble_1.keras, etc.
 ```
 
 **Best Practices**:
-- Use `.keras` extension for modern TensorFlow format
+- **Use `.keras` extension** for new models (modern TensorFlow format)
+- System **auto-converts** `.h5` to `.keras` format when `auto_convert_legacy=True`
 - Organize models by survey type or date
 - Keep trained models for reuse on similar data
+- Legacy `.h5` models are supported but will be migrated to `.keras` format
+
+**Format Details**:
+- **`.keras` format**: Modern TensorFlow SavedModel format (TF 2.13+)
+- **`.h5` format**: Legacy HDF5 format (backward compatibility)
+- **Auto-conversion**: Legacy models automatically converted to modern format
+- **Ensemble models**: Multiple models created with numbered suffixes
 
 ---
 
