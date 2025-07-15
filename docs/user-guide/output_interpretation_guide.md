@@ -51,6 +51,59 @@ Epoch 2/100
   - Should be close to training MAE
   - Large difference indicates overfitting
 
+### Early Stopping and Model Optimization
+
+During training, you may see messages like:
+
+```
+Early stopping
+Restoring model weights from the end of the best epoch: 5
+```
+
+#### **"Restoring model weights from the end of the best epoch: X" Explained**
+
+**What this message means**:
+1. **Training continued past epoch X** (e.g., ran to epoch 15 or 20)
+2. **Epoch X had the best validation performance** (lowest val_loss)
+3. **The system automatically rolled back** to use the model weights from epoch X
+4. **Later epochs performed worse**, so they were discarded
+
+**Why this happens**:
+This is **Early Stopping with Best Weight Restoration** - a built-in safety mechanism that prevents overfitting:
+
+```
+Epoch 1: val_loss: 0.500 
+Epoch 2: val_loss: 0.400
+Epoch 3: val_loss: 0.350
+Epoch 4: val_loss: 0.320
+Epoch 5: val_loss: 0.300  ← BEST PERFORMANCE
+Epoch 6: val_loss: 0.310  ← Starting to get worse
+Epoch 7: val_loss: 0.325
+...
+Epoch 15: Training stops, restores weights from Epoch 5
+```
+
+**What this tells you**:
+- ✅ **Good News**: The system worked correctly and prevented overfitting
+- ✅ **Optimization**: You got the best possible model automatically
+- ✅ **Efficiency**: Training was stopped at the optimal point
+
+**When to investigate**:
+- **Best epoch 1-3**: May indicate learning rate too high or data issues
+- **Best epoch >80% of total epochs**: Consider increasing total epochs
+- **Best epoch 5-20**: This is normal and ideal
+
+**Actions based on best epoch**:
+```bash
+# If best epoch very early (1-3), reduce learning rate:
+--learning-rate 0.0005
+
+# If best epoch very late, increase epochs:
+--epochs 200
+
+# Normal best epoch (5-20): No action needed
+```
+
 ### Reading Training Progress
 
 #### **Healthy Training Pattern:**
@@ -255,6 +308,39 @@ Epoch 100: loss: 0.750 - mae: 0.620 - val_loss: 0.790 - val_mae: 0.650
 3. **Check data quality**: Ensure input data is reasonable
 4. **Increase ensemble size**: `--ensemble-size 5`
 
+### Problem: Training Stops Too Early (Best Epoch 1-3)
+
+**Symptoms**:
+```
+Epoch 1: loss: 0.800 - mae: 0.650 - val_loss: 0.820 - val_mae: 0.680
+Epoch 2: loss: 0.600 - mae: 0.500 - val_loss: 0.650 - val_mae: 0.520  ← BEST
+Epoch 3: loss: 0.500 - mae: 0.450 - val_loss: 0.680 - val_mae: 0.540
+...
+Early stopping
+Restoring model weights from the end of the best epoch: 2
+```
+
+**Solutions**:
+1. **Reduce learning rate**: `--learning-rate 0.0005` or `--learning-rate 0.0001`
+2. **Check data quality**: Ensure input data is properly formatted
+3. **Increase model capacity**: `--base-filters 48 --depth 5`
+4. **Adjust validation split**: `--validation-split 0.15` (use less for validation)
+
+### Problem: Training Could Continue (Best Epoch Very Late)
+
+**Symptoms**:
+```
+Training for 100 epochs...
+Epoch 95: loss: 0.120 - mae: 0.080 - val_loss: 0.125 - val_mae: 0.085  ← BEST
+Epoch 100: loss: 0.115 - mae: 0.078 - val_loss: 0.130 - val_mae: 0.088
+Training completed (no early stopping triggered)
+```
+
+**Solutions**:
+1. **Increase epochs**: `--epochs 200` or `--epochs 300`
+2. **Model is still learning**: Let it train longer
+3. **Monitor validation loss**: Ensure it's still decreasing overall
+
 ### Problem: Overfitting (Val_Loss Increasing)
 
 **Symptoms**:
@@ -357,6 +443,65 @@ Epoch 100: loss: 0.020 - mae: 0.015 - val_loss: 0.180 - val_mae: 0.140
 - Expert review queue has most/all files
 
 ## 💡 Advanced Interpretation Tips
+
+### Understanding Early Stopping Behavior
+
+The system uses sophisticated early stopping to optimize training automatically:
+
+#### **Early Stopping Configuration**
+```python
+EarlyStopping(
+    monitor='val_loss',           # Watches validation loss
+    patience=15,                  # Waits 15 epochs after best
+    restore_best_weights=True,    # Rolls back to best epoch
+    verbose=1                     # Shows restore messages
+)
+```
+
+#### **Interpreting Early Stopping Messages**
+
+**Message Pattern 1 - Normal Optimization:**
+```
+Epoch 8: val_loss: 0.240  ← Best performance
+Epoch 9: val_loss: 0.245
+Epoch 10: val_loss: 0.250
+...
+Epoch 23: EarlyStopping counter: 15 out of 15
+Early stopping
+Restoring model weights from the end of the best epoch: 8
+```
+✅ **Perfect**: Model optimized correctly, waited full patience period
+
+**Message Pattern 2 - Quick Convergence:**
+```
+Epoch 3: val_loss: 0.180  ← Best performance
+Epoch 4: val_loss: 0.185
+...
+Epoch 18: Early stopping triggered
+Restoring model weights from the end of the best epoch: 3
+```
+✅ **Good**: Fast learning, model found optimal weights quickly
+
+**Message Pattern 3 - Potential Issues:**
+```
+Epoch 1: val_loss: 0.520
+Epoch 2: val_loss: 0.450  ← Best performance
+Epoch 3: val_loss: 0.470
+...
+Early stopping
+Restoring model weights from the end of the best epoch: 2
+```
+⚠️ **Check needed**: Very early best epoch may indicate learning rate too high
+
+#### **Best Epoch Analysis Guide**
+
+| Best Epoch Range | Interpretation | Action Needed |
+|-----------------|----------------|---------------|
+| **1-2** | Learning rate too high or data issues | Reduce learning rate to 0.0005 |
+| **3-5** | Very fast convergence (could be good) | Monitor quality scores |
+| **5-15** | Ideal convergence pattern | No action needed |
+| **15-30** | Normal learning progression | No action needed |
+| **>80% of total epochs** | May benefit from more training | Increase total epochs |
 
 ### Understanding Seafloor-Specific Performance
 
@@ -511,12 +656,14 @@ When processing multiple files, examine patterns:
 - Memory errors causing crashes
 - Composite quality <0.3 across all files
 - Training loss not decreasing after 50 epochs
+- **Early stopping at epoch 1-2 consistently**
 
 **Actions**:
 1. Check system resources (RAM, disk space)
 2. Verify input data format and quality
 3. Reduce processing parameters (smaller batch size, grid size)
 4. Check GDAL installation and file access
+5. **Reduce learning rate if early stopping is too early**
 
 ### Review Recommended
 
@@ -525,12 +672,14 @@ When processing multiple files, examine patterns:
 - Many files in expert review queue
 - Quality declining over processing time
 - Large gaps between training and validation metrics
+- **Best epoch consistently <5 across multiple files**
 
 **Actions**:
 1. Examine failed files for patterns
 2. Adjust quality thresholds
 3. Check for data consistency issues
 4. Consider parameter tuning
+5. **Analyze early stopping patterns for learning rate adjustment**
 
 ### Monitoring Ongoing
 
@@ -539,11 +688,42 @@ When processing multiple files, examine patterns:
 - Increasing processing times
 - Memory usage trends
 - Expert review accumulation
+- **Early stopping epoch trends over time**
 
 **Actions**:
 1. Track trends over time
 2. Plan for parameter optimization
 3. Monitor system performance
 4. Schedule regular quality reviews
+5. **Log best epoch statistics for pattern analysis**
+
+### Early Stopping Red Flags
+
+**🔴 Immediate Investigation**:
+- **Best epoch = 1**: Learning rate definitely too high
+- **No early stopping triggered**: Model may need more epochs
+- **Inconsistent best epochs**: Data quality issues
+
+**🟡 Monitor Closely**:
+- **Best epoch 2-3**: May indicate suboptimal learning rate
+- **Best epoch varies wildly between files**: Mixed data quality
+- **Early stopping very late (>80% epochs)**: Consider more training
+
+**Example Log Analysis**:
+```
+File 1: Restoring model weights from the end of the best epoch: 1  ← RED FLAG
+File 2: Restoring model weights from the end of the best epoch: 2  ← RED FLAG
+File 3: Restoring model weights from the end of the best epoch: 1  ← PATTERN
+Action: Reduce learning rate to 0.0001
+```
+
+vs.
+
+```
+File 1: Restoring model weights from the end of the best epoch: 8  ← GOOD
+File 2: Restoring model weights from the end of the best epoch: 12 ← GOOD
+File 3: Restoring model weights from the end of the best epoch: 6  ← GOOD
+Action: No changes needed, system working optimally
+```
 
 By understanding these outputs comprehensively, you can effectively monitor the AI processing, identify issues early, and optimize settings for the best possible results. Remember: the goal is clean, accurate bathymetric data that preserves important seafloor features while removing noise and artifacts.
