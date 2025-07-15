@@ -4,6 +4,21 @@ Enhanced Bathymetric CAE Processing - Main Entry Point
 Updated with modern Keras format support and warning suppression.
 """
 
+# ============================================================================
+# HDF5 and Environment Configuration Fix
+# ============================================================================
+
+# Fix HDF5 driver registration issues and warnings
+import os
+os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
+
+# Additional TensorFlow optimizations
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+
+
+
 import os
 import sys
 import warnings
