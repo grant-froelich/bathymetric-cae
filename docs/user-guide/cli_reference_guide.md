@@ -1,354 +1,349 @@
 # Enhanced Bathymetric CAE Processing - Command Line Reference Guide
 
-Complete guide to command line options, usage patterns, and best practices for the Enhanced Bathymetric CAE Processing system.
+Complete guide to command line options with Windows Command Prompt examples, usage scenarios, and practical tips.
+
+## 🎯 How to Run the Program
+
+### Method 1: Direct Command (Recommended)
+```cmd
+bathymetric-cae [options]
+```
+
+### Method 2: Python Script
+```cmd
+python main.py [options]
+```
+
+### Method 3: Python Module
+```cmd
+python -m enhanced_bathymetric_cae [options]
+```
+
+## 📋 Complete Command Reference Table
+
+| Option | Type | Default | Range/Options | Purpose | Quick Example |
+|--------|------|---------|---------------|---------|---------------|
+| **Input/Output** |
+| `--input` | Path | `\\network_folder\input_bathymetric_files` | Any valid path | Input directory | `--input C:\SurveyData` |
+| `--output` | Path | `\\network_folder\output_bathymetric_files` | Any valid path | Output directory | `--output C:\Results` |
+| `--model` | Path | `cae_model_with_uncertainty.keras` | .keras/.h5 files | Model file path | `--model C:\Models\survey.keras` |
+| `--config` | Path | None | .json files | Load config file | `--config settings.json` |
+| `--save-config` | Path | None | .json files | Save config file | `--save-config my_settings.json` |
+| **Training Parameters** |
+| `--epochs` | Integer | 100 | 10-500 | Training iterations | `--epochs 200` |
+| `--batch-size` | Integer | 8 | 1-32 | Samples per batch | `--batch-size 16` |
+| `--learning-rate` | Float | 0.001 | 0.0001-0.01 | AI learning speed | `--learning-rate 0.0005` |
+| `--validation-split` | Float | 0.2 | 0.1-0.3 | Validation ratio | `--validation-split 0.25` |
+| **Model Architecture** |
+| `--grid-size` | Integer | 512 | 128,256,512,1024,2048 | Processing resolution | `--grid-size 1024` |
+| `--base-filters` | Integer | 32 | 16-64 | Model complexity | `--base-filters 48` |
+| `--depth` | Integer | 4 | 2-6 | Model layers | `--depth 5` |
+| `--dropout-rate` | Float | 0.2 | 0.0-0.5 | Regularization | `--dropout-rate 0.1` |
+| `--ensemble-size` | Integer | 3 | 1-10 | Number of models | `--ensemble-size 5` |
+| **Enhanced Features** |
+| `--enable-adaptive` | Flag | False | True/False | Smart seafloor processing | `--enable-adaptive` |
+| `--enable-expert-review` | Flag | False | True/False | Human quality control | `--enable-expert-review` |
+| `--enable-constitutional` | Flag | False | True/False | AI safety constraints | `--enable-constitutional` |
+| `--quality-threshold` | Float | 0.7 | 0.0-1.0 | Review trigger level | `--quality-threshold 0.85` |
+| **Processing Options** |
+| `--max-workers` | Integer | -1 | 1-32, -1=auto | Parallel workers | `--max-workers 8` |
+| `--log-level` | Choice | INFO | DEBUG,INFO,WARNING,ERROR | Logging detail | `--log-level DEBUG` |
+| `--no-gpu` | Flag | False | True/False | Disable GPU | `--no-gpu` |
+| **Quality Weights** (Must sum to 1.0) |
+| `--ssim-weight` | Float | 0.3 | 0.0-1.0 | Structural similarity | `--ssim-weight 0.4` |
+| `--roughness-weight` | Float | 0.2 | 0.0-1.0 | Surface smoothness | `--roughness-weight 0.15` |
+| `--feature-weight` | Float | 0.3 | 0.0-1.0 | Feature preservation | `--feature-weight 0.35` |
+| `--consistency-weight` | Float | 0.2 | 0.0-1.0 | Depth consistency | `--consistency-weight 0.1` |
 
 ## 📋 Table of Contents
 
 - [Quick Start Examples](#quick-start-examples)
-- [Input/Output Options](#inputoutput-options)
-- [Configuration Options](#configuration-options)
+- [Input/Output Commands](#inputoutput-commands)
 - [Training Parameters](#training-parameters)
 - [Model Architecture](#model-architecture)
 - [Enhanced Features](#enhanced-features)
 - [Processing Options](#processing-options)
-- [Quality Metric Weights](#quality-metric-weights)
+- [Quality Control](#quality-control)
 - [Common Usage Patterns](#common-usage-patterns)
 - [Troubleshooting Commands](#troubleshooting-commands)
 
-## 📋 Quick Reference Table
-
-| Option | Type | Default | Range | Purpose |
-|## 💾 Model File Format Information
-
-The Enhanced Bathymetric CAE system supports both modern and legacy model formats:
-
-### **Modern Format (Recommended): `.keras`**
-- **Default**: All new models saved in `.keras` format
-- **TensorFlow Version**: 2.13+ native format
-- **Benefits**: Better compatibility, metadata preservation, faster loading
-- **File Extension**: `.keras`
-
-### **Legacy Format (Backward Compatibility): `.h5`**
-- **Support**: Full backward compatibility maintained
-- **Auto-Conversion**: Legacy `.h5` models automatically converted to `.keras`
-- **Use Case**: Loading existing models from older versions
-- **File Extension**: `.h5`
-
-### **Migration Behavior**
-```bash
-# Loading legacy model - automatically converts
-bathymetric-cae --model old_model.h5
-# System creates: old_model.keras (modern format)
-
-# Explicitly specify format in filename
-bathymetric-cae --model new_model.keras  # Uses modern format
-bathymetric-cae --model legacy_model.h5  # Loads and converts to .keras
-```
-
-### **Ensemble Model Naming**
-For ensemble processing, models are automatically numbered:
-```bash
-# Base model: survey_model.keras
-# Ensemble creates:
-#   survey_model_ensemble_0.keras
-#   survey_model_ensemble_1.keras  
-#   survey_model_ensemble_2.keras
-```
-
---------|------|---------|-------|---------|
-| `--input` | Path | `\\network_folder\input_bathymetric_files` | - | Input directory |
-| `--output` | Path | `\\network_folder\output_bathymetric_files` | - | Output directory |
-| `--model` | Path | `cae_model_with_uncertainty.keras` | .keras/.h5 | Model file path |
-| `--config` | Path | None | - | Load config file |
-| `--save-config` | Path | None | - | Save config file |
-| `--epochs` | Integer | 100 | 10-500 | Training iterations |
-| `--batch-size` | Integer | 8 | 1-32 | Batch size |
-| `--learning-rate` | Float | 0.001 | 0.0001-0.01 | Learning rate |
-| `--validation-split` | Float | 0.2 | 0.1-0.3 | Validation ratio |
-| `--grid-size` | Integer | 512 | 128,256,512,1024,2048 | Processing resolution |
-| `--base-filters` | Integer | 32 | 16-64 | Model complexity |
-| `--depth` | Integer | 4 | 2-6 | Model depth |
-| `--dropout-rate` | Float | 0.2 | 0.0-0.5 | Regularization |
-| `--ensemble-size` | Integer | 3 | 1-10 | Number of models |
-| `--enable-adaptive` | Flag | False | - | Seafloor adaptation |
-| `--enable-expert-review` | Flag | False | - | Expert review system |
-| `--enable-constitutional` | Flag | False | - | AI constraints |
-| `--quality-threshold` | Float | 0.7 | 0.0-1.0 | Review threshold |
-| `--max-workers` | Integer | -1 | 1-32 | Parallel workers |
-| `--log-level` | Choice | INFO | DEBUG,INFO,WARNING,ERROR | Logging level |
-| `--no-gpu` | Flag | False | - | Disable GPU |
-| `--ssim-weight` | Float | 0.3 | 0.0-1.0 | SSIM importance |
-| `--roughness-weight` | Float | 0.2 | 0.0-1.0 | Roughness importance |
-| `--feature-weight` | Float | 0.3 | 0.0-1.0 | Feature importance |
-| `--consistency-weight` | Float | 0.2 | 0.0-1.0 | Consistency importance |
-
----
-
 ## 🚀 Quick Start Examples
 
-### Basic Usage
-```bash
-# Process all files in current directory with defaults
+### Basic Usage (Windows CMD)
+
+**Method 1: Direct Command (Recommended)**
+```cmd
+REM Most basic command - uses all defaults
 bathymetric-cae
 
-# Process specific folder
-bathymetric-cae --input data/bathymetry --output data/processed
+REM Process specific folders
+bathymetric-cae --input C:\BathymetryData\Survey2024 --output C:\ProcessedData\Survey2024
 
-# Load saved configuration
-bathymetric-cae --config my_settings.json
+REM Load saved configuration
+bathymetric-cae --config production_settings.json
+```
+
+**Method 2: Python Script**
+```cmd
+REM Most basic command using Python script
+python main.py
+
+REM Process specific folders using Python
+python main.py --input C:\BathymetryData\Survey2024 --output C:\ProcessedData\Survey2024
+
+REM Load configuration using Python
+python main.py --config production_settings.json
+```
+
+**Method 3: Python Module**
+```cmd
+REM Run as Python module
+python -m enhanced_bathymetric_cae
+
+REM With parameters
+python -m enhanced_bathymetric_cae --input C:\Data --output C:\Results
 ```
 
 ### Common Workflows
-```bash
-# Development (fast, lower quality)
+
+**Direct Command Examples:**
+```cmd
+REM Development mode (fast testing)
 bathymetric-cae --epochs 25 --ensemble-size 1 --grid-size 256
 
-# Production (high quality)
+REM Production mode (high quality)
 bathymetric-cae --epochs 200 --ensemble-size 5 --enable-adaptive --enable-expert-review
 
-# Quick test run
+REM Quick test run
 bathymetric-cae --epochs 5 --batch-size 1 --grid-size 128
 ```
 
----
+**Python Script Examples:**
+```cmd
+REM Development mode using Python script
+python main.py --epochs 25 --ensemble-size 1 --grid-size 256
 
-## 📁 Input/Output Options
+REM Production mode using Python script
+python main.py --epochs 200 --ensemble-size 5 --enable-adaptive --enable-expert-review
 
-### `--input` / `--input-folder`
-**Purpose**: Specify the directory containing bathymetric files to process  
-**Type**: String (path)  
-**Default**: `\\network_folder\input_bathymetric_files`
-
-**Examples**:
-```bash
-# Absolute path
-bathymetric-cae --input /data/survey_2024/bathymetry
-
-# Relative path
-bathymetric-cae --input ./input_data
-
-# Windows network path
-bathymetric-cae --input "\\server\surveys\january_2024"
-
-# Current directory
-bathymetric-cae --input .
+REM Quick test run using Python script
+python main.py --epochs 5 --batch-size 1 --grid-size 128
 ```
 
-**Best Practices**:
-- Use absolute paths for production scripts
-- Ensure directory contains supported formats (`.bag`, `.tif`, `.asc`, `.xyz`)
-- Verify read permissions on input directory
+---
+
+## 📁 Input/Output Commands
+
+### `--input` / `--input-folder`
+**Purpose**: Specify folder containing bathymetric files to process  
+**Default**: `\\network_folder\input_bathymetric_files`  
+**File Types**: `.bag`, `.tif`, `.tiff`, `.asc`, `.xyz`
+
+**When to Use:**
+- Processing data from a specific survey
+- Working with files in a custom location
+- Batch processing multiple files
+
+**Windows Examples:**
+```cmd
+REM Direct command - Local drive
+bathymetric-cae --input C:\Surveys\January2024
+
+REM Python script - Network drive
+python main.py --input "\\SurveyServer\Data\Multibeam\2024\Q1"
+
+REM Direct command - Current directory
+bathymetric-cae --input .
+
+REM Python script - Relative path
+python main.py --input .\InputData
+```
+
+**How to Modify:**
+- Use **quotes** for paths with spaces: `"C:\Program Files\Survey Data"`
+- Use **forward slashes** or **double backslashes**: `C:/Data` or `C:\\Data`
+- Use **UNC paths** for network drives: `\\server\share\folder`
 
 ### `--output` / `--output-folder`
 **Purpose**: Specify where processed files will be saved  
-**Type**: String (path)  
 **Default**: `\\network_folder\output_bathymetric_files`
 
-**Examples**:
-```bash
-# Standard output directory
-bathymetric-cae --output /data/processed/survey_2024
+**When to Use:**
+- Organizing results by date/survey
+- Saving to different storage locations
+- Keeping processed data separate from raw data
 
-# Timestamped output
-bathymetric-cae --output "./results_$(date +%Y%m%d_%H%M%S)"
+**Windows Examples:**
+```cmd
+REM Direct command - Standard output folder
+bathymetric-cae --output C:\ProcessedSurveys\January2024
 
-# Network storage
-bathymetric-cae --output "\\storage\processed_surveys"
+REM Python script - Timestamped output
+python main.py --output "C:\Results\Survey_%DATE:~-4,4%-%DATE:~-10,2%-%DATE:~-7,2%"
+
+REM Direct command - Network storage
+bathymetric-cae --output "\\StorageServer\ProcessedData\Bathymetry"
+
+REM Python script - Desktop folder
+python main.py --output "%USERPROFILE%\Desktop\BathymetryResults"
 ```
-
-**Best Practices**:
-- Ensure write permissions on output directory
-- Directory will be created if it doesn't exist
-- Use descriptive names for organization
 
 ### `--model` / `--model-path`
-**Purpose**: Path to save/load the trained AI model  
-**Type**: String (path)  
+**Purpose**: Path to save/load trained AI model  
 **Default**: `cae_model_with_uncertainty.keras`  
-**Supported Formats**: `.keras` (modern, recommended), `.h5` (legacy)
+**Formats**: `.keras` (modern), `.h5` (legacy)
 
-**Examples**:
-```bash
-# Modern Keras format (recommended)
-bathymetric-cae --model models/survey_2024_model.keras
+**When to Use:**
+- Reusing trained models on similar data
+- Saving models for specific survey types
+- Loading pre-trained models
 
-# Legacy H5 format (auto-converted to .keras)
-bathymetric-cae --model trained_models/coastal_model.h5
+**Windows Examples:**
+```cmd
+REM Direct command - Modern format (recommended)
+bathymetric-cae --model C:\Models\CoastalSurvey_2024.keras
 
-# Timestamped model with modern format
-bathymetric-cae --model "models/model_$(date +%Y%m%d).keras"
+REM Python script - Legacy format (auto-converted)
+python main.py --model C:\Models\DeepOcean_trained.h5
 
-# Ensemble models (automatically numbered)
-bathymetric-cae --model models/ensemble_base.keras --ensemble-size 3
-# Creates: ensemble_base_ensemble_0.keras, ensemble_base_ensemble_1.keras, etc.
+REM Direct command - Timestamped model
+bathymetric-cae --model "C:\Models\Model_%DATE%.keras"
+
+REM Python script - Network model storage
+python main.py --model "\\ModelServer\TrainedModels\bathymetric_ensemble.keras"
 ```
-
-**Best Practices**:
-- **Use `.keras` extension** for new models (modern TensorFlow format)
-- System **auto-converts** `.h5` to `.keras` format when `auto_convert_legacy=True`
-- Organize models by survey type or date
-- Keep trained models for reuse on similar data
-- Legacy `.h5` models are supported but will be migrated to `.keras` format
-
-**Format Details**:
-- **`.keras` format**: Modern TensorFlow SavedModel format (TF 2.13+)
-- **`.h5` format**: Legacy HDF5 format (backward compatibility)
-- **Auto-conversion**: Legacy models automatically converted to modern format
-- **Ensemble models**: Multiple models created with numbered suffixes
 
 ---
 
-## ⚙️ Configuration Options
+## ⚙️ Configuration Commands
 
 ### `--config`
-**Purpose**: Load configuration from JSON file  
-**Type**: String (file path)  
+**Purpose**: Load settings from JSON configuration file  
 **Default**: None (uses built-in defaults)
 
-**Examples**:
-```bash
-# Load production configuration
-bathymetric-cae --config configs/production.json
+**When to Use:**
+- Standardizing processing across teams
+- Saving complex parameter combinations
+- Switching between processing modes
 
-# Load survey-specific settings
-bathymetric-cae --config surveys/coastal_mapping.json
+**Windows Examples:**
+```cmd
+REM Direct command - Load production settings
+bathymetric-cae --config C:\Configs\production.json
 
-# Load with overrides
-bathymetric-cae --config base_config.json --epochs 300
-```
+REM Python script - Load survey-specific settings
+python main.py --config "C:\Survey Configs\shallow_water.json"
 
-**Sample Configuration File**:
-```json
-{
-  "input_folder": "data/input",
-  "output_folder": "data/output",
-  "epochs": 150,
-  "batch_size": 8,
-  "ensemble_size": 3,
-  "enable_adaptive_processing": true,
-  "enable_expert_review": true,
-  "quality_threshold": 0.8
-}
+REM Direct command - Combine config with overrides
+bathymetric-cae --config base_settings.json --epochs 300
 ```
 
 ### `--save-config`
-**Purpose**: Save current configuration to JSON file  
-**Type**: String (file path)  
-**Default**: None (doesn't save unless specified)
+**Purpose**: Save current settings to JSON file  
+**Default**: None
 
-**Examples**:
-```bash
-# Save current settings
+**When to Use:**
+- Creating reusable configurations
+- Documenting successful parameter combinations
+- Sharing settings with team members
+
+**Windows Examples:**
+```cmd
+REM Direct command - Save current settings
 bathymetric-cae --save-config my_settings.json
 
-# Save production configuration
-bathymetric-cae --epochs 200 --ensemble-size 5 --save-config production.json
+REM Python script - Save production configuration
+python main.py --epochs 200 --ensemble-size 5 --save-config production.json
 
-# Save and run
-bathymetric-cae --save-config settings.json --input data/test
+REM Direct command - Save and run simultaneously
+bathymetric-cae --save-config settings.json --input C:\TestData
 ```
-
-**Best Practices**:
-- Save configurations for reproducible processing
-- Use descriptive filenames
-- Version control configuration files
 
 ---
 
 ## 🏋️ Training Parameters
 
 ### `--epochs`
-**Purpose**: Number of training iterations  
-**Type**: Integer  
+**Purpose**: Number of AI training iterations  
 **Default**: 100  
 **Range**: 10-500
 
-**Examples**:
-```bash
-# Quick test (faster, lower quality)
-bathymetric-cae --epochs 25
+**When to Use:**
+- **10-50**: Development and testing (faster results)
+- **100-150**: Standard processing (balanced quality/speed)
+- **200-300**: High-quality production (slower, better results)
+- **300+**: Research-grade processing
 
-# Standard processing
-bathymetric-cae --epochs 100
+**Windows Examples:**
+```cmd
+REM Direct command - Quick test
+bathymetric-cae --epochs 25 --input C:\TestData
 
-# High quality (slower, better results)
-bathymetric-cae --epochs 300
+REM Python script - Standard processing
+python main.py --epochs 100 --input C:\SurveyData
 
-# Production quality
-bathymetric-cae --epochs 200
+REM Direct command - High quality
+bathymetric-cae --epochs 250 --input C:\ImportantSurvey
+
+REM Python script - Research quality
+python main.py --epochs 400 --input C:\ResearchData
 ```
 
-**Usage Guidelines**:
-- **25-50**: Development and testing
-- **100-150**: Standard processing
-- **200-300**: High-quality production
-- **300+**: Research-grade quality
+**How to Modify Based on Usage:**
+- **Fast testing**: Use 10-25 epochs
+- **Quality concerns**: Increase to 200-300 epochs
+- **Time constraints**: Decrease to 50-75 epochs
 
 ### `--batch-size`
-**Purpose**: Number of samples processed simultaneously  
-**Type**: Integer  
+**Purpose**: Number of data samples processed simultaneously  
 **Default**: 8  
 **Range**: 1-32
 
-**Examples**:
-```bash
-# Memory-constrained systems
-bathymetric-cae --batch-size 1
+**When to Use:**
+- **1-2**: Systems with < 8GB RAM
+- **4-8**: Standard systems (8-16GB RAM)
+- **16-32**: High-memory systems (> 16GB RAM + GPU)
 
-# Standard processing
-bathymetric-cae --batch-size 8
+**Windows Examples:**
+```cmd
+REM Direct command - Low memory system
+bathymetric-cae --batch-size 2 --input C:\Data
 
-# High-memory systems
-bathymetric-cae --batch-size 16
+REM Python script - Standard system
+python main.py --batch-size 8 --input C:\Data
 
-# GPU optimization
-bathymetric-cae --batch-size 32
+REM Direct command - High-performance system
+bathymetric-cae --batch-size 16 --input C:\Data
+
+REM Python script - GPU-optimized
+python main.py --batch-size 32 --input C:\Data
 ```
 
-**Memory Guidelines**:
-- **1-2**: < 8GB RAM
-- **4-8**: 8-16GB RAM  
-- **16-32**: > 16GB RAM + GPU
+**Memory Guidelines:**
+- Monitor Task Manager while processing
+- Reduce if getting "Out of Memory" errors
+- Increase on powerful systems for faster processing
 
 ### `--learning-rate`
 **Purpose**: AI model learning speed  
-**Type**: Float  
 **Default**: 0.001  
 **Range**: 0.0001-0.01
 
-**Examples**:
-```bash
-# Conservative learning (stable)
-bathymetric-cae --learning-rate 0.0005
+**When to Use:**
+- **0.0001-0.0005**: Conservative learning (more stable)
+- **0.001**: Standard learning (default)
+- **0.002-0.005**: Fast learning (may be unstable)
 
-# Standard learning
-bathymetric-cae --learning-rate 0.001
+**Windows Examples:**
+```cmd
+REM Direct command - Conservative (stable but slower)
+bathymetric-cae --learning-rate 0.0005 --input C:\CriticalData
 
-# Fast learning (may be unstable)
-bathymetric-cae --learning-rate 0.005
-```
+REM Python script - Standard
+python main.py --learning-rate 0.001 --input C:\StandardData
 
-**Usage Guidelines**:
-- Lower values: More stable, slower convergence
-- Higher values: Faster training, risk of instability
-- Adjust based on data complexity
-
-### `--validation-split`
-**Purpose**: Fraction of data used for validation  
-**Type**: Float  
-**Default**: 0.2  
-**Range**: 0.1-0.3
-
-**Examples**:
-```bash
-# Small validation set
-bathymetric-cae --validation-split 0.1
-
-# Standard validation
-bathymetric-cae --validation-split 0.2
-
-# Large validation set
-bathymetric-cae --validation-split 0.3
+REM Direct command - Aggressive (faster but riskier)
+bathymetric-cae --learning-rate 0.003 --input C:\TestData
 ```
 
 ---
@@ -356,387 +351,359 @@ bathymetric-cae --validation-split 0.3
 ## 🏗️ Model Architecture
 
 ### `--grid-size`
-**Purpose**: Processing resolution (pixels)  
-**Type**: Integer  
+**Purpose**: Processing resolution in pixels  
 **Default**: 512  
 **Options**: 128, 256, 512, 1024, 2048
 
-**Examples**:
-```bash
-# Fast processing (lower quality)
-bathymetric-cae --grid-size 256
-
-# Standard processing
-bathymetric-cae --grid-size 512
-
-# High resolution (slower, better quality)
-bathymetric-cae --grid-size 1024
-
-# Maximum resolution (very slow)
-bathymetric-cae --grid-size 2048
-```
-
-**Performance vs Quality**:
-- **128-256**: Fast development, lower detail
-- **512**: Balanced performance/quality
+**When to Use:**
+- **128-256**: Fast development/testing, lower detail
+- **512**: Balanced performance and quality (recommended)
 - **1024**: High quality, slower processing
-- **2048**: Research quality, very slow
+- **2048**: Maximum quality, very slow
 
-### `--base-filters`
-**Purpose**: AI model complexity (number of filters)  
-**Type**: Integer  
-**Default**: 32  
-**Range**: 16-64
+**Windows Examples:**
+```cmd
+REM Direct command - Fast processing
+bathymetric-cae --grid-size 256 --input C:\QuickTest
 
-**Examples**:
-```bash
-# Lightweight model
-bathymetric-cae --base-filters 16
+REM Python script - Standard quality
+python main.py --grid-size 512 --input C:\StandardSurvey
 
-# Standard model
-bathymetric-cae --base-filters 32
+REM Direct command - High resolution
+bathymetric-cae --grid-size 1024 --input C:\DetailedSurvey
 
-# Complex model
-bathymetric-cae --base-filters 48
+REM Python script - Maximum quality
+python main.py --grid-size 2048 --input C:\ResearchSurvey
 ```
 
-### `--depth`
-**Purpose**: AI model depth (number of layers)  
-**Type**: Integer  
-**Default**: 4  
-**Range**: 2-6
-
-**Examples**:
-```bash
-# Shallow model (fast)
-bathymetric-cae --depth 3
-
-# Standard model
-bathymetric-cae --depth 4
-
-# Deep model (better features)
-bathymetric-cae --depth 5
-```
-
-### `--dropout-rate`
-**Purpose**: AI regularization (prevents overfitting)  
-**Type**: Float  
-**Default**: 0.2  
-**Range**: 0.0-0.5
-
-**Examples**:
-```bash
-# No dropout
-bathymetric-cae --dropout-rate 0.0
-
-# Light regularization
-bathymetric-cae --dropout-rate 0.1
-
-# Standard regularization
-bathymetric-cae --dropout-rate 0.2
-
-# Heavy regularization
-bathymetric-cae --dropout-rate 0.3
-```
+**Performance vs Quality Trade-offs:**
+- Larger grid = Better quality but **much** slower
+- Choose based on time available and quality requirements
 
 ### `--ensemble-size`
-**Purpose**: Number of AI models to combine  
-**Type**: Integer  
+**Purpose**: Number of AI models working together  
 **Default**: 3  
 **Range**: 1-10
 
-**Examples**:
-```bash
-# Single model (fastest)
-bathymetric-cae --ensemble-size 1
+**When to Use:**
+- **1**: Fastest processing, lowest accuracy
+- **3**: Good balance (recommended)
+- **5**: High accuracy, slower processing
+- **7+**: Maximum accuracy, very slow
 
-# Standard ensemble
-bathymetric-cae --ensemble-size 3
+**Windows Examples:**
+```cmd
+REM Direct command - Single model (fastest)
+bathymetric-cae --ensemble-size 1 --input C:\QuickJob
 
-# High-accuracy ensemble
-bathymetric-cae --ensemble-size 5
+REM Python script - Standard ensemble
+python main.py --ensemble-size 3 --input C:\NormalJob
 
-# Research-grade ensemble
-bathymetric-cae --ensemble-size 7
+REM Direct command - High accuracy
+bathymetric-cae --ensemble-size 5 --input C:\QualityJob
+
+REM Python script - Research grade
+python main.py --ensemble-size 7 --input C:\ResearchJob
 ```
 
-**Performance Trade-offs**:
-- **1**: Fastest, lowest accuracy
-- **3**: Good balance
-- **5**: High accuracy, slower
-- **7+**: Maximum accuracy, very slow
+**Time vs Quality:**
+- Each additional model roughly doubles processing time
+- Benefits diminish after 5-7 models
 
 ---
 
 ## ✨ Enhanced Features
 
 ### `--enable-adaptive`
-**Purpose**: Enable automatic seafloor type detection and adaptive processing  
-**Type**: Flag (boolean)  
-**Default**: False (disabled)
+**Purpose**: Enable automatic seafloor type detection and smart processing  
+**Default**: Disabled
 
-**Examples**:
-```bash
-# Enable adaptive processing
-bathymetric-cae --enable-adaptive
+**When to Use:**
+- Processing diverse seafloor types
+- Unknown or mixed survey areas
+- Want automatic optimization
 
-# Combine with other features
-bathymetric-cae --enable-adaptive --enable-expert-review
+**What It Does:**
+- Detects shallow coastal, deep ocean, seamount, etc.
+- Adjusts processing parameters automatically
+- Optimizes for each seafloor environment
 
-# Production setup
-bathymetric-cae --enable-adaptive --quality-threshold 0.8
+**Windows Examples:**
+```cmd
+REM Direct command - Enable smart processing
+bathymetric-cae --enable-adaptive --input C:\MixedSurvey
+
+REM Python script - Combine with other features
+python main.py --enable-adaptive --enable-expert-review --input C:\ComplexSurvey
 ```
-
-**What It Does**:
-- Automatically detects seafloor type (coastal, deep ocean, seamount, etc.)
-- Adjusts processing parameters for optimal results
-- Uses different strategies for different underwater environments
 
 ### `--enable-expert-review`
-**Purpose**: Enable human expert review system for quality control  
-**Type**: Flag (boolean)  
-**Default**: False (disabled)
+**Purpose**: Enable human expert quality control system  
+**Default**: Disabled
 
-**Examples**:
-```bash
-# Enable expert review
-bathymetric-cae --enable-expert-review
+**When to Use:**
+- Critical surveys requiring validation
+- Quality control workflows
+- Learning about data quality patterns
 
-# With custom quality threshold
-bathymetric-cae --enable-expert-review --quality-threshold 0.85
-
-# Production quality control
-bathymetric-cae --enable-expert-review --enable-constitutional
-```
-
-**What It Does**:
-- Flags low-quality results for human review
+**What It Does:**
+- Flags questionable results for human review
 - Maintains database of expert assessments
-- Generates review reports and statistics
+- Generates review reports
+
+**Windows Examples:**
+```cmd
+REM Direct command - Enable expert review
+bathymetric-cae --enable-expert-review --input C:\CriticalSurvey
+
+REM Python script - Set custom quality threshold
+python main.py --enable-expert-review --quality-threshold 0.85 --input C:\HighStandardSurvey
+```
 
 ### `--enable-constitutional`
-**Purpose**: Enable constitutional AI constraints for data integrity  
-**Type**: Flag (boolean)  
-**Default**: False (disabled)
+**Purpose**: Enable AI safety constraints for data integrity  
+**Default**: Disabled
 
-**Examples**:
-```bash
-# Enable safety constraints
-bathymetric-cae --enable-constitutional
+**When to Use:**
+- Preventing unrealistic results
+- Ensuring physical plausibility
+- Safety-critical applications
 
-# Full feature set
-bathymetric-cae --enable-adaptive --enable-expert-review --enable-constitutional
+**What It Does:**
+- Prevents physically impossible depth changes
+- Preserves important seafloor features
+- Ensures realistic gradient transitions
 
-# Safety-first processing
-bathymetric-cae --enable-constitutional --quality-threshold 0.9
+**Windows Examples:**
+```cmd
+REM Direct command - Enable safety constraints
+bathymetric-cae --enable-constitutional --input C:\SafetyCriticalSurvey
+
+REM Python script - Full feature set
+python main.py --enable-adaptive --enable-expert-review --enable-constitutional --input C:\ProductionSurvey
 ```
-
-**What It Does**:
-- Prevents physically unrealistic results
-- Preserves important bathymetric features
-- Ensures gradient continuity and feature preservation
-
-### `--quality-threshold`
-**Purpose**: Set quality threshold for expert review flagging  
-**Type**: Float  
-**Default**: 0.7  
-**Range**: 0.0-1.0
-
-**Examples**:
-```bash
-# Relaxed threshold (fewer reviews)
-bathymetric-cae --quality-threshold 0.6
-
-# Standard threshold
-bathymetric-cae --quality-threshold 0.7
-
-# Strict threshold (more reviews)
-bathymetric-cae --quality-threshold 0.85
-
-# Research-grade threshold
-bathymetric-cae --quality-threshold 0.9
-```
-
-**Guidelines**:
-- **0.5-0.6**: Development/testing
-- **0.7-0.8**: Standard production
-- **0.85-0.9**: High-quality surveys
-- **0.9+**: Research applications
 
 ---
 
 ## ⚡ Processing Options
 
 ### `--max-workers`
-**Purpose**: Maximum number of parallel processing workers  
-**Type**: Integer  
-**Default**: -1 (auto-detect available CPU cores)  
+**Purpose**: Number of parallel processing workers  
+**Default**: -1 (auto-detect CPU cores)  
 **Range**: 1-32
 
-**Examples**:
-```bash
-# Auto-detect cores
-bathymetric-cae --max-workers -1
-
-# Single-threaded (memory constrained)
-bathymetric-cae --max-workers 1
-
-# Use 4 cores
-bathymetric-cae --max-workers 4
-
-# Use all available cores
-bathymetric-cae --max-workers 16
-```
-
-**Performance Guidelines**:
+**When to Use:**
 - **1**: Memory-constrained systems
 - **4-8**: Standard workstations
-- **16+**: High-performance systems
+- **-1**: Let system decide (recommended)
+
+**Windows Examples:**
+```cmd
+REM Direct command - Auto-detect cores
+bathymetric-cae --max-workers -1 --input C:\Data
+
+REM Python script - Limit for other work
+python main.py --max-workers 4 --input C:\Data
+
+REM Direct command - Single-threaded (memory limited)
+bathymetric-cae --max-workers 1 --input C:\Data
+```
 
 ### `--log-level`
-**Purpose**: Control logging verbosity  
-**Type**: Choice  
-**Options**: DEBUG, INFO, WARNING, ERROR  
-**Default**: INFO
+**Purpose**: Control amount of information displayed  
+**Default**: INFO  
+**Options**: DEBUG, INFO, WARNING, ERROR
 
-**Examples**:
-```bash
-# Detailed debugging information
-bathymetric-cae --log-level DEBUG
+**When to Use:**
+- **DEBUG**: Troubleshooting issues
+- **INFO**: Normal operation (recommended)
+- **WARNING**: Minimal output for production
+- **ERROR**: Only show problems
 
-# Standard information
-bathymetric-cae --log-level INFO
+**Windows Examples:**
+```cmd
+REM Direct command - Detailed troubleshooting
+bathymetric-cae --log-level DEBUG --input C:\ProblemData
 
-# Only warnings and errors
-bathymetric-cae --log-level WARNING
+REM Python script - Normal operation
+python main.py --log-level INFO --input C:\StandardData
 
-# Errors only
-bathymetric-cae --log-level ERROR
+REM Direct command - Quiet operation
+bathymetric-cae --log-level WARNING --input C:\BatchData
 ```
-
-**When to Use**:
-- **DEBUG**: Troubleshooting, development
-- **INFO**: Standard operation
-- **WARNING**: Production monitoring
-- **ERROR**: Minimal logging
 
 ### `--no-gpu`
-**Purpose**: Disable GPU acceleration, use CPU only  
-**Type**: Flag (boolean)  
-**Default**: False (GPU enabled if available)
+**Purpose**: Force CPU-only processing (disable GPU)  
+**Default**: GPU enabled if available
 
-**Examples**:
-```bash
-# Force CPU processing
-bathymetric-cae --no-gpu
-
-# CPU with multiple workers
-bathymetric-cae --no-gpu --max-workers 8
-
-# Memory-optimized CPU processing
-bathymetric-cae --no-gpu --batch-size 2 --max-workers 1
-```
-
-**When to Use**:
-- GPU driver issues
-- Memory constraints
+**When to Use:**
+- GPU driver problems
+- Memory limitations
 - CPU-only systems
-- Debugging purposes
+- Debugging GPU issues
+
+**Windows Examples:**
+```cmd
+REM Direct command - Force CPU processing
+bathymetric-cae --no-gpu --input C:\Data
+
+REM Python script - CPU with more workers
+python main.py --no-gpu --max-workers 8 --input C:\Data
+```
 
 ---
 
-## 📊 Quality Metric Weights
+## 📊 Quality Control Options
 
-These options control how different quality aspects are weighted in the final score. **All weights must sum to 1.0**.
-
-### `--ssim-weight`
-**Purpose**: Weight for Structural Similarity Index  
-**Type**: Float  
-**Default**: 0.3  
+### `--quality-threshold`
+**Purpose**: Set minimum quality score for expert review flagging  
+**Default**: 0.7  
 **Range**: 0.0-1.0
 
-### `--roughness-weight`
-**Purpose**: Weight for surface roughness metric  
-**Type**: Float  
-**Default**: 0.2  
-**Range**: 0.0-1.0
+**When to Use:**
+- **0.5-0.6**: Development/testing (relaxed standards)
+- **0.7-0.8**: Standard production
+- **0.85-0.9**: High-quality surveys
+- **0.9+**: Research applications
 
-### `--feature-weight` / `--feature-preservation-weight`
-**Purpose**: Weight for bathymetric feature preservation  
-**Type**: Float  
-**Default**: 0.3  
-**Range**: 0.0-1.0
+**Windows Examples:**
+```cmd
+REM Direct command - Relaxed standards
+bathymetric-cae --quality-threshold 0.6 --input C:\TestData
 
-### `--consistency-weight`
-**Purpose**: Weight for depth measurement consistency  
-**Type**: Float  
-**Default**: 0.2  
-**Range**: 0.0-1.0
+REM Python script - Standard production
+python main.py --quality-threshold 0.75 --input C:\ProductionData
 
-**Examples**:
-```bash
-# Emphasize feature preservation
-bathymetric-cae --feature-weight 0.5 --ssim-weight 0.2 --consistency-weight 0.2 --roughness-weight 0.1
-
-# Emphasize smoothness
-bathymetric-cae --roughness-weight 0.4 --ssim-weight 0.3 --feature-weight 0.2 --consistency-weight 0.1
-
-# Balanced weights (default)
-bathymetric-cae --ssim-weight 0.3 --feature-weight 0.3 --consistency-weight 0.2 --roughness-weight 0.2
+REM Direct command - High standards
+bathymetric-cae --quality-threshold 0.9 --input C:\CriticalData
 ```
 
-**⚠️ Important**: All weights must sum to 1.0!
+### Quality Metric Weights
+**Purpose**: Control importance of different quality aspects  
+**Requirement**: All weights must sum to 1.0
+
+**Default Values:**
+- `--ssim-weight 0.3` (structural similarity)
+- `--feature-weight 0.3` (feature preservation)
+- `--consistency-weight 0.2` (depth consistency)
+- `--roughness-weight 0.2` (surface smoothness)
+
+**Windows Examples:**
+```cmd
+REM Direct command - Emphasize feature preservation
+bathymetric-cae --feature-weight 0.5 --ssim-weight 0.2 --consistency-weight 0.2 --roughness-weight 0.1 --input C:\FeatureRichData
+
+REM Python script - Emphasize smoothness
+python main.py --roughness-weight 0.4 --ssim-weight 0.3 --feature-weight 0.2 --consistency-weight 0.1 --input C:\NoisyData
+```
 
 ---
 
 ## 🎯 Common Usage Patterns
 
 ### Development and Testing
-```bash
-# Quick development test
-bathymetric-cae --epochs 10 --batch-size 1 --grid-size 128 --ensemble-size 1
 
-# Feature testing
-bathymetric-cae --epochs 25 --enable-adaptive --log-level DEBUG
+**Direct Command Examples:**
+```cmd
+REM Quick development test
+bathymetric-cae --epochs 10 --batch-size 1 --grid-size 128 --ensemble-size 1 --input C:\DevData
 
-# Performance testing
-bathymetric-cae --epochs 50 --batch-size 8 --max-workers 4
+REM Feature testing
+bathymetric-cae --epochs 25 --enable-adaptive --log-level DEBUG --input C:\TestFeatures
+
+REM Performance testing
+bathymetric-cae --epochs 50 --batch-size 8 --max-workers 4 --input C:\PerfTest
+```
+
+**Python Script Examples:**
+```cmd
+REM Quick development test using Python
+python main.py --epochs 10 --batch-size 1 --grid-size 128 --ensemble-size 1 --input C:\DevData
+
+REM Feature testing using Python
+python main.py --epochs 25 --enable-adaptive --log-level DEBUG --input C:\TestFeatures
+
+REM Performance testing using Python
+python main.py --epochs 50 --batch-size 8 --max-workers 4 --input C:\PerfTest
+```4 --input C:\PerfTest
 ```
 
 ### Production Processing
-```bash
-# Standard production
-bathymetric-cae --epochs 150 --ensemble-size 3 --enable-adaptive --enable-expert-review
 
-# High-quality production
-bathymetric-cae --epochs 200 --ensemble-size 5 --grid-size 1024 --quality-threshold 0.85
+**Direct Command Examples:**
+```cmd
+REM Standard production
+bathymetric-cae --epochs 150 --ensemble-size 3 --enable-adaptive --enable-expert-review --input "C:\Production Data" --output "C:\Production Results"
 
-# Batch production with configuration
-bathymetric-cae --config production.json --input batch_data/ --output results/
+REM High-quality production
+bathymetric-cae --epochs 200 --ensemble-size 5 --grid-size 1024 --quality-threshold 0.85 --enable-adaptive --enable-expert-review --enable-constitutional --input "C:\Critical Survey" --output "C:\Critical Results"
+
+REM Batch production using saved settings
+bathymetric-cae --config production.json --input "C:\Batch Data" --output "C:\Batch Results"
+```
+
+**Python Script Examples:**
+```cmd
+REM Standard production using Python
+python main.py --epochs 150 --ensemble-size 3 --enable-adaptive --enable-expert-review --input "C:\Production Data" --output "C:\Production Results"
+
+REM High-quality production using Python
+python main.py --epochs 200 --ensemble-size 5 --grid-size 1024 --quality-threshold 0.85 --enable-adaptive --enable-expert-review --enable-constitutional --input "C:\Critical Survey" --output "C:\Critical Results"
+
+REM Batch production using saved settings with Python
+python main.py --config production.json --input "C:\Batch Data" --output "C:\Batch Results"
 ```
 
 ### Specialized Surveys
-```bash
-# Coastal mapping (high detail)
-bathymetric-cae --grid-size 1024 --feature-weight 0.4 --enable-adaptive --quality-threshold 0.8
 
-# Deep ocean survey (noise reduction focus)
-bathymetric-cae --roughness-weight 0.4 --ensemble-size 5 --enable-constitutional
+**Direct Command Examples:**
+```cmd
+REM Coastal mapping (high detail required)
+bathymetric-cae --grid-size 1024 --feature-weight 0.4 --enable-adaptive --quality-threshold 0.8 --input "C:\Coastal Survey" --output "C:\Coastal Results"
 
-# Research quality
-bathymetric-cae --epochs 300 --ensemble-size 7 --grid-size 1024 --quality-threshold 0.9
+REM Deep ocean survey (noise reduction focus)
+bathymetric-cae --roughness-weight 0.4 --ensemble-size 5 --enable-constitutional --input "C:\Deep Ocean" --output "C:\Deep Ocean Clean"
+
+REM Research quality processing
+bathymetric-cae --epochs 300 --ensemble-size 7 --grid-size 1024 --quality-threshold 0.9 --enable-adaptive --enable-expert-review --enable-constitutional --input "C:\Research Data" --output "C:\Research Results"
+```
+
+**Python Script Examples:**
+```cmd
+REM Coastal mapping using Python (high detail required)
+python main.py --grid-size 1024 --feature-weight 0.4 --enable-adaptive --quality-threshold 0.8 --input "C:\Coastal Survey" --output "C:\Coastal Results"
+
+REM Deep ocean survey using Python (noise reduction focus)
+python main.py --roughness-weight 0.4 --ensemble-size 5 --enable-constitutional --input "C:\Deep Ocean" --output "C:\Deep Ocean Clean"
+
+REM Research quality processing using Python
+python main.py --epochs 300 --ensemble-size 7 --grid-size 1024 --quality-threshold 0.9 --enable-adaptive --enable-expert-review --enable-constitutional --input "C:\Research Data" --output "C:\Research Results"
 ```
 
 ### Resource-Constrained Processing
-```bash
-# Low memory
-bathymetric-cae --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1
 
-# CPU-only processing
-bathymetric-cae --no-gpu --max-workers 8 --batch-size 4
+**Direct Command Examples:**
+```cmd
+REM Low memory (< 8GB RAM)
+bathymetric-cae --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1 --input C:\Data
 
-# Network storage
-bathymetric-cae --input "\\server\data" --output "\\server\results" --log-level WARNING
+REM CPU-only processing
+bathymetric-cae --no-gpu --max-workers 8 --batch-size 4 --input C:\Data
+
+REM Network storage with minimal logging
+bathymetric-cae --input "\\Server\Input" --output "\\Server\Output" --log-level WARNING
+```
+
+**Python Script Examples:**
+```cmd
+REM Low memory using Python (< 8GB RAM)
+python main.py --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1 --input C:\Data
+
+REM CPU-only processing using Python
+python main.py --no-gpu --max-workers 8 --batch-size 4 --input C:\Data
+
+REM Network storage with minimal logging using Python
+python main.py --input "\\Server\Input" --output "\\Server\Output" --log-level WARNING
 ```
 
 ---
@@ -744,146 +711,250 @@ bathymetric-cae --input "\\server\data" --output "\\server\results" --log-level 
 ## 🔧 Troubleshooting Commands
 
 ### Memory Issues
-```bash
-# Minimal memory usage
-bathymetric-cae --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1 --no-gpu
 
-# Memory debugging
-bathymetric-cae --log-level DEBUG --batch-size 2 --epochs 5
+**Direct Command Examples:**
+```cmd
+REM Minimal memory usage
+bathymetric-cae --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1 --no-gpu --input C:\Data
+
+REM Check memory usage during processing
+bathymetric-cae --log-level DEBUG --batch-size 2 --epochs 5 --input C:\SmallTest
+```
+
+**Python Script Examples:**
+```cmd
+REM Minimal memory usage using Python
+python main.py --batch-size 1 --grid-size 256 --ensemble-size 1 --max-workers 1 --no-gpu --input C:\Data
+
+REM Check memory usage during processing using Python
+python main.py --log-level DEBUG --batch-size 2 --epochs 5 --input C:\SmallTest
 ```
 
 ### Performance Issues
-```bash
-# Profile performance
-bathymetric-cae --epochs 10 --log-level DEBUG --max-workers 1
 
-# GPU debugging
-bathymetric-cae --log-level DEBUG --batch-size 1 --epochs 5
+**Direct Command Examples:**
+```cmd
+REM Profile performance
+bathymetric-cae --epochs 10 --log-level DEBUG --max-workers 1 --input C:\PerfTest
+
+REM GPU debugging
+bathymetric-cae --log-level DEBUG --batch-size 1 --epochs 5 --input C:\GPUTest
+
+REM Test without GPU
+bathymetric-cae --no-gpu --log-level DEBUG --input C:\CPUTest
+```
+
+**Python Script Examples:**
+```cmd
+REM Profile performance using Python
+python main.py --epochs 10 --log-level DEBUG --max-workers 1 --input C:\PerfTest
+
+REM GPU debugging using Python
+python main.py --log-level DEBUG --batch-size 1 --epochs 5 --input C:\GPUTest
+
+REM Test without GPU using Python
+python main.py --no-gpu --log-level DEBUG --input C:\CPUTest
 ```
 
 ### Quality Issues
-```bash
-# Debug quality problems
-bathymetric-cae --epochs 100 --enable-adaptive --enable-constitutional --log-level DEBUG
 
-# Strict quality checking
-bathymetric-cae --quality-threshold 0.9 --enable-expert-review --log-level INFO
+**Direct Command Examples:**
+```cmd
+REM Debug quality problems
+bathymetric-cae --epochs 100 --enable-adaptive --enable-constitutional --log-level DEBUG --input C:\QualityTest
+
+REM Strict quality checking
+bathymetric-cae --quality-threshold 0.9 --enable-expert-review --log-level INFO --input C:\StrictTest
+```
+
+**Python Script Examples:**
+```cmd
+REM Debug quality problems using Python
+python main.py --epochs 100 --enable-adaptive --enable-constitutional --log-level DEBUG --input C:\QualityTest
+
+REM Strict quality checking using Python
+python main.py --quality-threshold 0.9 --enable-expert-review --log-level INFO --input C:\StrictTest
 ```
 
 ### File/Path Issues
-```bash
-# Test with minimal data
-bathymetric-cae --input . --output ./test_output --epochs 5
 
-# Verbose file processing
-bathymetric-cae --log-level DEBUG --input data/ --output results/
+**Direct Command Examples:**
+```cmd
+REM Test with current directory
+bathymetric-cae --input . --output .\test_output --epochs 5
+
+REM Verbose file processing
+bathymetric-cae --log-level DEBUG --input "C:\Problem Data" --output "C:\Debug Results"
+
+REM Check file format support
+bathymetric-cae --log-level DEBUG --epochs 1 --input C:\SingleFile
+```
+
+**Python Script Examples:**
+```cmd
+REM Test with current directory using Python
+python main.py --input . --output .\test_output --epochs 5
+
+REM Verbose file processing using Python
+python main.py --log-level DEBUG --input "C:\Problem Data" --output "C:\Debug Results"
+
+REM Check file format support using Python
+python main.py --log-level DEBUG --epochs 1 --input C:\SingleFile
 ```
 
 ---
 
-## 📋 Complete Example Commands
+## 💡 Windows CMD Pro Tips
 
-### Beginner Examples
-```bash
-# Most basic usage
-bathymetric-cae
+### Environment Variables
+```cmd
+REM Set up commonly used paths
+set SURVEY_DATA=C:\SurveyData
+set RESULTS=C:\ProcessedResults
+set CONFIG=C:\Configs\standard.json
 
-# Simple custom paths
-bathymetric-cae --input my_data --output my_results
+REM Use in direct commands
+bathymetric-cae --input %SURVEY_DATA% --output %RESULTS% --config %CONFIG%
 
-# Quick test
-bathymetric-cae --epochs 10 --batch-size 1
+REM Use in Python script commands
+python main.py --input %SURVEY_DATA% --output %RESULTS% --config %CONFIG%
 ```
 
-### Intermediate Examples
-```bash
-# Balanced production setup
-bathymetric-cae --input surveys/2024 --output processed/2024 \
-  --epochs 150 --ensemble-size 3 --enable-adaptive --quality-threshold 0.8
+### Batch Files for Common Tasks
 
-# Save and load configuration
-bathymetric-cae --epochs 200 --ensemble-size 5 --save-config my_settings.json
-bathymetric-cae --config my_settings.json --input new_data/
+**Direct Command Batch File (quick_process.bat):**
+```cmd
+@echo off
+echo Starting quick bathymetric processing...
+bathymetric-cae --epochs 50 --ensemble-size 2 --input %1 --output %2
+echo Processing complete!
+pause
+
+REM Usage: quick_process.bat "C:\Input Data" "C:\Output"
 ```
 
-### Advanced Examples
-```bash
-# High-quality research processing
-bathymetric-cae \
-  --input research_surveys/ \
-  --output high_quality_results/ \
-  --config research_config.json \
-  --epochs 300 \
-  --ensemble-size 7 \
-  --grid-size 1024 \
-  --batch-size 4 \
-  --enable-adaptive \
-  --enable-expert-review \
-  --enable-constitutional \
-  --quality-threshold 0.9 \
-  --feature-weight 0.4 \
-  --ssim-weight 0.3 \
-  --consistency-weight 0.2 \
-  --roughness-weight 0.1 \
-  --log-level INFO
+**Python Script Batch File (python_process.bat):**
+```cmd
+@echo off
+echo Starting Python-based bathymetric processing...
+python main.py --epochs 50 --ensemble-size 2 --input %1 --output %2
+echo Processing complete!
+pause
 
-# Memory-optimized batch processing
-bathymetric-cae \
-  --input large_dataset/ \
-  --output batch_results/ \
-  --batch-size 1 \
-  --grid-size 512 \
-  --ensemble-size 3 \
-  --max-workers 1 \
-  --epochs 100 \
-  --enable-adaptive \
-  --log-level WARNING
+REM Usage: python_process.bat "C:\Input Data" "C:\Output"
 ```
 
----
+### Combining with Other Windows Commands
 
-## 💡 Pro Tips
+**Direct Command Examples:**
+```cmd
+REM Create timestamped output folder
+mkdir "C:\Results\%DATE:~-4,4%-%DATE:~-10,2%-%DATE:~-7,2%"
+bathymetric-cae --input C:\Data --output "C:\Results\%DATE:~-4,4%-%DATE:~-10,2%-%DATE:~-7,2%"
 
-### Configuration Management
-1. **Save successful configurations**: Use `--save-config` for settings that work well
-2. **Version control configs**: Keep configuration files in version control
-3. **Environment-specific configs**: Create separate configs for dev/test/prod
+REM Log processing to file
+bathymetric-cae --input C:\Data --output C:\Results > processing_log.txt 2>&1
+```
 
-### Performance Optimization
-1. **Start small**: Test with small datasets and low epochs first
-2. **Monitor resources**: Use `--log-level DEBUG` to monitor memory/GPU usage
-3. **Scale gradually**: Increase batch size and grid size based on available resources
+**Python Script Examples:**
+```cmd
+REM Create timestamped output folder and process with Python
+mkdir "C:\Results\%DATE:~-4,4%-%DATE:~-10,2%-%DATE:~-7,2%"
+python main.py --input C:\Data --output "C:\Results\%DATE:~-4,4%-%DATE:~-10,2%-%DATE:~-7,2%"
 
-### Quality Optimization
-1. **Enable all features**: Use `--enable-adaptive --enable-expert-review --enable-constitutional` for best results
-2. **Adjust thresholds**: Lower `--quality-threshold` for development, raise for production
-3. **Customize weights**: Adjust quality metric weights based on survey requirements
-
-### Workflow Integration
-1. **Script automation**: Create shell scripts with common parameter combinations
-2. **Batch processing**: Process multiple surveys with consistent settings
-3. **Result validation**: Always review quality reports and expert review feedback
+REM Log Python processing to file
+python main.py --input C:\Data --output C:\Results > python_processing_log.txt 2>&1
+```
 
 ---
 
 ## 🆘 Getting Help
 
-```bash
-# Show all available options
+### Help Commands
+
+**Direct Command:**
+```cmd
+REM Show all available options
 bathymetric-cae --help
 
-# Show version information
+REM Show version information
 bathymetric-cae --version
 
-# Test installation
+REM Test installation
 bathymetric-cae --epochs 1 --batch-size 1 --log-level DEBUG
 ```
 
-For more detailed help:
-- 📖 Check the [User Guide](../user-guide/README.md)
-- 🐛 [Report Issues](https://github.com/noaa-ocs-hydrography/bathymetric-cae/issues)
-- 💬 [Community Discussions](https://github.com/noaa-ocs-hydrography/bathymetric-cae/discussions)
+**Python Script:**
+```cmd
+REM Show all available options using Python
+python main.py --help
+
+REM Show version information using Python
+python main.py --version
+
+REM Test installation using Python
+python main.py --epochs 1 --batch-size 1 --log-level DEBUG
+```
+
+### Quick Diagnostics
+
+**Direct Command:**
+```cmd
+REM Test basic functionality
+bathymetric-cae --epochs 5 --batch-size 1 --grid-size 64 --input C:\TestData --log-level DEBUG
+
+REM Check GPU availability
+bathymetric-cae --log-level DEBUG --epochs 1 --batch-size 1
+
+REM Verify file formats
+bathymetric-cae --log-level DEBUG --input "C:\Sample Files"
+```
+
+**Python Script:**
+```cmd
+REM Test basic functionality using Python
+python main.py --epochs 5 --batch-size 1 --grid-size 64 --input C:\TestData --log-level DEBUG
+
+REM Check GPU availability using Python
+python main.py --log-level DEBUG --epochs 1 --batch-size 1
+
+REM Verify file formats using Python
+python main.py --log-level DEBUG --input "C:\Sample Files"
+```
 
 ---
 
-**Remember**: Start with simple commands and gradually add complexity as you become familiar with the system!
+## 📋 Quick Reference Summary
+
+| Command | Quick Use | When to Change | Direct Command | Python Script |
+|---------|-----------|----------------|----------------|---------------|
+| `--epochs 100` | More = better quality | 25 for testing, 200+ for production | `bathymetric-cae --epochs 200` | `python main.py --epochs 200` |
+| `--batch-size 8` | More = faster (needs RAM) | 1-2 for low memory, 16+ for high memory | `bathymetric-cae --batch-size 16` | `python main.py --batch-size 16` |
+| `--grid-size 512` | More = better detail | 256 for speed, 1024 for quality | `bathymetric-cae --grid-size 1024` | `python main.py --grid-size 1024` |
+| `--ensemble-size 3` | More = better accuracy | 1 for speed, 5+ for quality | `bathymetric-cae --ensemble-size 5` | `python main.py --ensemble-size 5` |
+| `--enable-adaptive` | Smart processing | Always use unless testing | `bathymetric-cae --enable-adaptive` | `python main.py --enable-adaptive` |
+| `--enable-expert-review` | Quality control | Use for important surveys | `bathymetric-cae --enable-expert-review` | `python main.py --enable-expert-review` |
+| `--quality-threshold 0.7` | Higher = stricter | 0.6 for testing, 0.85+ for critical work | `bathymetric-cae --quality-threshold 0.85` | `python main.py --quality-threshold 0.85` |
+
+## 🚀 When to Use Each Method
+
+### Direct Command (`bathymetric-cae`)
+- **Best for**: Production use, end users, simple workflows
+- **Pros**: Clean, simple, professional appearance
+- **Cons**: Requires proper installation/PATH setup
+
+### Python Script (`python main.py`)
+- **Best for**: Development, debugging, custom environments
+- **Pros**: Always works if Python is installed, easier debugging
+- **Cons**: Slightly more verbose, requires Python knowledge
+
+### Python Module (`python -m enhanced_bathymetric_cae`)
+- **Best for**: Package testing, virtual environments
+- **Pros**: Works with package installations, explicit module loading
+- **Cons**: Most verbose, mainly for advanced users
+
+---
+
+**Remember**: Start with defaults and adjust based on your specific needs for time, quality, and system resources!
+
+For detailed documentation, visit: [Enhanced Bathymetric CAE Documentation](https://github.com/noaa-ocs-hydrography/bathymetric-cae/docs)
