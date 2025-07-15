@@ -1,6 +1,6 @@
 """
-Quality metrics for bathymetric data assessment.
-Fixed OpenCV compatibility issues and removed OpenCV dependency.
+Quality metrics for bathymetric data assessment - COMPLETELY OpenCV-Free Version.
+Fixed to eliminate all OpenCV dependencies and compatibility issues.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ class BathymetricQualityMetrics:
         try:
             data = BathymetricQualityMetrics._ensure_compatible_array(data)
             
-            # Use NumPy gradient instead of OpenCV to avoid format issues
+            # Use NumPy gradient instead of OpenCV
             grad_y, grad_x = np.gradient(data)
             slope = np.sqrt(grad_x**2 + grad_y**2)
             
@@ -63,7 +63,7 @@ class BathymetricQualityMetrics:
                 logging.warning("Shape mismatch in feature preservation calculation")
                 return 0.0
             
-            # Use scipy.ndimage Laplacian instead of OpenCV
+            # Use pure scipy.ndimage Laplacian - NO OpenCV
             laplacian_orig = BathymetricQualityMetrics._scipy_laplacian(original)
             laplacian_clean = BathymetricQualityMetrics._scipy_laplacian(cleaned)
             
@@ -92,10 +92,14 @@ class BathymetricQualityMetrics:
     
     @staticmethod
     def _scipy_laplacian(data: np.ndarray) -> np.ndarray:
-        """Calculate Laplacian using scipy.ndimage instead of OpenCV."""
+        """Calculate Laplacian using ONLY scipy.ndimage - NO OpenCV."""
         try:
+            # Ensure data is float64 for numerical stability
+            data = data.astype(np.float64)
+            
             # Use scipy's Laplacian filter
-            return ndimage.laplace(data)
+            return ndimage.laplace(data, mode='nearest')
+            
         except Exception as e:
             logging.error(f"Error in scipy Laplacian calculation: {e}")
             # Fallback to manual convolution
@@ -104,22 +108,23 @@ class BathymetricQualityMetrics:
     @staticmethod
     def _manual_laplacian(data: np.ndarray) -> np.ndarray:
         """Manual Laplacian calculation as fallback."""
-        kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float64)
-        
-        # Manual convolution
-        padded = np.pad(data, 1, mode='edge')
-        result = np.zeros_like(data, dtype=np.float64)
-        
-        for i in range(data.shape[0]):
-            for j in range(data.shape[1]):
-                patch = padded[i:i+3, j:j+3]
-                result[i, j] = np.sum(patch * kernel)
-        
-        return result
+        try:
+            # Ensure float64
+            data = data.astype(np.float64)
+            
+            kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float64)
+            
+            # Use scipy.ndimage.convolve instead of manual convolution
+            return ndimage.convolve(data, kernel, mode='constant', cval=0.0)
+            
+        except Exception as e:
+            logging.error(f"Error in manual Laplacian: {e}")
+            # Ultimate fallback - return zeros
+            return np.zeros_like(data, dtype=np.float64)
     
     @staticmethod
     def calculate_depth_consistency(data: np.ndarray) -> float:
-        """Calculate consistency of depth measurements."""
+        """Calculate consistency of depth measurements using ONLY scipy."""
         try:
             data = BathymetricQualityMetrics._ensure_compatible_array(data)
             
@@ -182,7 +187,10 @@ class BathymetricQualityMetrics:
                 logging.warning("Shape mismatch in SSIM calculation")
                 return 0.0
             
-            # Ensure finite values
+            # Ensure data is float64 and finite
+            original = original.astype(np.float64)
+            cleaned = cleaned.astype(np.float64)
+            
             if not (np.isfinite(original).all() and np.isfinite(cleaned).all()):
                 logging.warning("Non-finite values in SSIM calculation")
                 return 0.0
@@ -190,8 +198,8 @@ class BathymetricQualityMetrics:
             data_range = float(max(cleaned.max() - cleaned.min(), 1e-8))
             
             return ssim(
-                original.astype(np.float64),
-                cleaned.astype(np.float64),
+                original,
+                cleaned,
                 data_range=data_range,
                 gaussian_weights=True,
                 win_size=min(7, min(original.shape[-2:]))
