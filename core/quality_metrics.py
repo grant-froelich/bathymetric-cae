@@ -1,22 +1,23 @@
 """
 Quality metrics for bathymetric data assessment.
-Fixed version with OpenCV compatibility.
+Fixed OpenCV compatibility issues and removed OpenCV dependency.
 """
 
 import numpy as np
 import logging
 from typing import Optional
+from scipy import ndimage
 
 
 class BathymetricQualityMetrics:
-    """Domain-specific quality metrics for bathymetric data with OpenCV compatibility fixes."""
+    """Domain-specific quality metrics for bathymetric data - OpenCV-free version."""
     
     @staticmethod
     def _ensure_compatible_array(data: np.ndarray) -> np.ndarray:
         """Ensure array is compatible with processing operations."""
-        # Convert to float32 and ensure it's a valid format
-        if data.dtype != np.float32:
-            data = data.astype(np.float32)
+        # Convert to float64 for better numerical stability
+        if data.dtype != np.float64:
+            data = data.astype(np.float64)
         
         # Handle NaN and infinite values
         if np.any(~np.isfinite(data)):
@@ -62,9 +63,9 @@ class BathymetricQualityMetrics:
                 logging.warning("Shape mismatch in feature preservation calculation")
                 return 0.0
             
-            # Use NumPy-based Laplacian instead of OpenCV
-            laplacian_orig = BathymetricQualityMetrics._numpy_laplacian(original)
-            laplacian_clean = BathymetricQualityMetrics._numpy_laplacian(cleaned)
+            # Use scipy.ndimage Laplacian instead of OpenCV
+            laplacian_orig = BathymetricQualityMetrics._scipy_laplacian(original)
+            laplacian_clean = BathymetricQualityMetrics._scipy_laplacian(cleaned)
             
             # Calculate correlation
             orig_flat = laplacian_orig.flatten()
@@ -90,13 +91,24 @@ class BathymetricQualityMetrics:
             return 0.0
     
     @staticmethod
-    def _numpy_laplacian(data: np.ndarray) -> np.ndarray:
-        """Calculate Laplacian using NumPy to avoid OpenCV issues."""
-        kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
+    def _scipy_laplacian(data: np.ndarray) -> np.ndarray:
+        """Calculate Laplacian using scipy.ndimage instead of OpenCV."""
+        try:
+            # Use scipy's Laplacian filter
+            return ndimage.laplace(data)
+        except Exception as e:
+            logging.error(f"Error in scipy Laplacian calculation: {e}")
+            # Fallback to manual convolution
+            return BathymetricQualityMetrics._manual_laplacian(data)
+    
+    @staticmethod
+    def _manual_laplacian(data: np.ndarray) -> np.ndarray:
+        """Manual Laplacian calculation as fallback."""
+        kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float64)
         
         # Manual convolution
         padded = np.pad(data, 1, mode='edge')
-        result = np.zeros_like(data)
+        result = np.zeros_like(data, dtype=np.float64)
         
         for i in range(data.shape[0]):
             for j in range(data.shape[1]):
@@ -111,15 +123,14 @@ class BathymetricQualityMetrics:
         try:
             data = BathymetricQualityMetrics._ensure_compatible_array(data)
             
-            # Use simple local variance calculation
-            kernel_size = 3
-            padded = np.pad(data, kernel_size//2, mode='edge')
-            local_variance = np.zeros_like(data)
+            # Use scipy.ndimage for local variance calculation
+            # Create a uniform filter for local mean
+            local_mean = ndimage.uniform_filter(data, size=3, mode='nearest')
             
-            for i in range(data.shape[0]):
-                for j in range(data.shape[1]):
-                    patch = padded[i:i+kernel_size, j:j+kernel_size]
-                    local_variance[i, j] = np.var(patch)
+            # Calculate local variance
+            data_squared = data * data
+            local_mean_squared = ndimage.uniform_filter(data_squared, size=3, mode='nearest')
+            local_variance = local_mean_squared - local_mean * local_mean
             
             finite_variance = local_variance[np.isfinite(local_variance)]
             if len(finite_variance) > 0:
@@ -159,4 +170,32 @@ class BathymetricQualityMetrics:
                 
         except Exception as e:
             logging.error(f"Error calculating hydrographic standards compliance: {e}")
+            return 0.0
+
+    @staticmethod 
+    def calculate_ssim_safe(original: np.ndarray, cleaned: np.ndarray) -> float:
+        """Calculate SSIM with comprehensive error handling."""
+        try:
+            from skimage.metrics import structural_similarity as ssim
+            
+            if original.shape != cleaned.shape:
+                logging.warning("Shape mismatch in SSIM calculation")
+                return 0.0
+            
+            # Ensure finite values
+            if not (np.isfinite(original).all() and np.isfinite(cleaned).all()):
+                logging.warning("Non-finite values in SSIM calculation")
+                return 0.0
+            
+            data_range = float(max(cleaned.max() - cleaned.min(), 1e-8))
+            
+            return ssim(
+                original.astype(np.float64),
+                cleaned.astype(np.float64),
+                data_range=data_range,
+                gaussian_weights=True,
+                win_size=min(7, min(original.shape[-2:]))
+            )
+        except Exception as e:
+            logging.error(f"Error calculating SSIM: {e}")
             return 0.0
