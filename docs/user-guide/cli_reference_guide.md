@@ -579,22 +579,169 @@ bathymetric-cae --quality-threshold 0.9 --input C:\CriticalData
 ```
 
 ### Quality Metric Weights
-**Purpose**: Control importance of different quality aspects  
+**Purpose**: Control importance of different quality aspects in the composite quality score  
 **Requirement**: All weights must sum to 1.0
 
-**Default Values:**
-- `--ssim-weight 0.3` (structural similarity)
-- `--feature-weight 0.3` (feature preservation)
-- `--consistency-weight 0.2` (depth consistency)
-- `--roughness-weight 0.2` (surface smoothness)
+#### Understanding Each Quality Metric
 
-**Windows Examples:**
+**🎯 SSIM Weight (Structural Similarity)**
+- **What it measures**: How well the processed data maintains the overall structure of the original
+- **Range**: 0.0-1.0 (higher = more importance to preserving structure)
+- **Default**: 0.3 (30% of total quality score)
+- **When to increase**: When preserving overall bathymetric patterns is critical
+- **When to decrease**: When fine details matter more than overall structure
+
+**🗻 Feature Weight (Feature Preservation)**
+- **What it measures**: How well important seafloor features (ridges, valleys, peaks) are retained
+- **Range**: 0.0-1.0 (higher = more importance to keeping seafloor features)
+- **Default**: 0.3 (30% of total quality score)
+- **When to increase**: Mapping underwater mountains, canyons, or complex terrain
+- **When to decrease**: Processing flat areas where features are less important
+
+**📏 Consistency Weight (Depth Consistency)**
+- **What it measures**: How smooth and realistic depth transitions are
+- **Range**: 0.0-1.0 (higher = more importance to realistic depth changes)
+- **Default**: 0.2 (20% of total quality score)
+- **When to increase**: Navigation safety applications requiring smooth depth transitions
+- **When to decrease**: Research applications where small-scale variations matter
+
+**🌊 Roughness Weight (Surface Smoothness)**
+- **What it measures**: How much noise and unrealistic variation is removed
+- **Range**: 0.0-1.0 (higher = more importance to noise reduction)
+- **Default**: 0.2 (20% of total quality score)
+- **When to increase**: Very noisy data or when smooth surfaces are expected
+- **When to decrease**: Naturally rough terrain where some "noise" is actually real features
+
+#### Practical Tuning Examples
+
+**Scenario 1: Underwater Mountain Mapping (Seamounts)**
 ```cmd
-REM Direct command - Emphasize feature preservation
-bathymetric-cae --feature-weight 0.5 --ssim-weight 0.2 --consistency-weight 0.2 --roughness-weight 0.1 --input C:\FeatureRichData
+REM Emphasize keeping dramatic terrain features
+bathymetric-cae --feature-weight 0.5 --ssim-weight 0.3 --consistency-weight 0.1 --roughness-weight 0.1 --input C:\SeamountData
 
-REM Python script - Emphasize smoothness
-python main.py --roughness-weight 0.4 --ssim-weight 0.3 --feature-weight 0.2 --consistency-weight 0.1 --input C:\NoisyData
+REM Why these weights?
+REM feature-weight 0.5    = Most important: keep peaks, ridges, steep slopes
+REM ssim-weight 0.3       = Important: maintain overall mountain structure  
+REM consistency-weight 0.1 = Less important: steep changes are expected
+REM roughness-weight 0.1   = Less important: rough terrain is natural
+```
+
+**Scenario 2: Harbor/Port Surveying (Navigation Safety)**
+```cmd
+REM Emphasize preserving man-made hazards while maintaining smooth natural areas
+bathymetric-cae --feature-weight 0.4 --consistency-weight 0.3 --ssim-weight 0.2 --roughness-weight 0.1 --input C:\HarborSurvey
+
+REM Why these weights?
+REM feature-weight 0.4     = Most important: preserve piers, docks, debris, sunken vessels
+REM consistency-weight 0.3 = Important: smooth depth transitions in open water areas
+REM ssim-weight 0.2        = Important: maintain overall harbor structure
+REM roughness-weight 0.1   = Low: avoid smoothing away small but critical man-made objects
+
+REM Alternative for very cluttered ports with many structures
+bathymetric-cae --feature-weight 0.5 --ssim-weight 0.3 --consistency-weight 0.15 --roughness-weight 0.05 --input C:\BusyPort
+```
+
+**Scenario 3: Open Ocean Navigation Routes**
+```cmd
+REM Emphasize smooth, consistent depths for safe navigation in open water
+bathymetric-cae --consistency-weight 0.4 --roughness-weight 0.3 --ssim-weight 0.2 --feature-weight 0.1 --input C:\ShippingLanes
+
+REM Why these weights?
+REM consistency-weight 0.4 = Most important: smooth depth transitions for ship safety
+REM roughness-weight 0.3   = Important: remove noise that could mislead navigators
+REM ssim-weight 0.2        = Important: keep overall depth patterns
+REM feature-weight 0.1     = Less important: open ocean has fewer critical small features
+```
+
+**Scenario 4: Very Noisy Sonar Data**
+```cmd
+REM Focus on cleaning up noise while keeping structure
+bathymetric-cae --roughness-weight 0.4 --ssim-weight 0.3 --consistency-weight 0.2 --feature-weight 0.1 --input C:\NoisyData
+
+REM Why these weights?
+REM roughness-weight 0.4   = Most important: remove excessive noise
+REM ssim-weight 0.3        = Important: maintain overall structural patterns
+REM consistency-weight 0.2 = Important: ensure realistic depth variations
+REM feature-weight 0.1     = Less important: may be hard to distinguish features from noise
+```
+
+**Scenario 5: Flat Abyssal Plain Mapping**
+```cmd
+REM Emphasize smoothness and consistency over features
+bathymetric-cae --roughness-weight 0.35 --consistency-weight 0.35 --ssim-weight 0.25 --feature-weight 0.05 --input C:\AbyssalPlain
+
+REM Why these weights?
+REM roughness-weight 0.35   = High: remove noise from flat areas
+REM consistency-weight 0.35 = High: ensure smooth, realistic gradual slopes
+REM ssim-weight 0.25        = Moderate: maintain overall depth patterns
+REM feature-weight 0.05     = Low: few significant features expected
+```
+
+**Scenario 6: Scientific Research (Preserve All Details)**
+```cmd
+REM Balanced approach preserving both structure and features
+bathymetric-cae --ssim-weight 0.35 --feature-weight 0.35 --consistency-weight 0.2 --roughness-weight 0.1 --input C:\ResearchData
+
+REM Why these weights?
+REM ssim-weight 0.35        = High: preserve overall scientific accuracy
+REM feature-weight 0.35     = High: keep all potential geological features
+REM consistency-weight 0.2  = Moderate: realistic but allow natural variation
+REM roughness-weight 0.1    = Low: minimize smoothing that might remove real data
+```
+
+**Scenario 7: Coastal Mapping (Complex Environment)**
+```cmd
+REM Balanced approach for mixed shallow/deep coastal areas
+bathymetric-cae --feature-weight 0.4 --ssim-weight 0.3 --consistency-weight 0.2 --roughness-weight 0.1 --input C:\CoastalSurvey
+
+REM Why these weights?
+REM feature-weight 0.4      = High: preserve channels, shoals, reefs
+REM ssim-weight 0.3         = Important: maintain coastal structure patterns
+REM consistency-weight 0.2  = Moderate: allow for natural coastal complexity
+REM roughness-weight 0.1    = Low: coastal areas naturally have variations
+```
+
+#### Quick Tuning Guidelines
+
+| If you want... | Increase this weight | Decrease this weight |
+|----------------|---------------------|---------------------|
+| **Smoother results** | `--roughness-weight` | `--feature-weight` |
+| **Keep sharp features** | `--feature-weight` | `--roughness-weight` |
+| **Better for navigation** | `--feature-weight` + `--consistency-weight` | `--roughness-weight` |
+| **Preserve man-made structures** | `--feature-weight` | `--roughness-weight` |
+| **Scientific accuracy** | `--ssim-weight` + `--feature-weight` | `--roughness-weight` |
+| **Remove more noise** | `--roughness-weight` | `--feature-weight` |
+| **Preserve fine detail** | `--feature-weight` | `--roughness-weight` |
+
+#### Testing Your Custom Weights
+
+```cmd
+REM Test different weight combinations on a small sample
+bathymetric-cae --input C:\TestSample --output C:\Test1 --feature-weight 0.5 --ssim-weight 0.3 --consistency-weight 0.1 --roughness-weight 0.1 --epochs 50
+
+REM Compare with different weights
+bathymetric-cae --input C:\TestSample --output C:\Test2 --feature-weight 0.2 --ssim-weight 0.3 --consistency-weight 0.3 --roughness-weight 0.2 --epochs 50
+
+REM Review the quality scores in the output JSON files to see which works better
+```
+
+#### Weight Validation
+
+**✅ Valid Examples:**
+```cmd
+REM All weights sum to 1.0
+--ssim-weight 0.25 --roughness-weight 0.25 --feature-weight 0.25 --consistency-weight 0.25
+
+--ssim-weight 0.4 --roughness-weight 0.3 --feature-weight 0.2 --consistency-weight 0.1
+```
+
+**❌ Invalid Examples:**
+```cmd
+REM These will cause errors (weights sum to 1.2)
+--ssim-weight 0.3 --roughness-weight 0.3 --feature-weight 0.3 --consistency-weight 0.3
+
+REM These will cause errors (weights sum to 0.8)  
+--ssim-weight 0.2 --roughness-weight 0.2 --feature-weight 0.2 --consistency-weight 0.2
 ```
 
 ---
@@ -625,7 +772,6 @@ python main.py --epochs 25 --enable-adaptive --log-level DEBUG --input C:\TestFe
 
 REM Performance testing using Python
 python main.py --epochs 50 --batch-size 8 --max-workers 4 --input C:\PerfTest
-```4 --input C:\PerfTest
 ```
 
 ### Production Processing
