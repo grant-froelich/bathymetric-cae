@@ -1,13 +1,14 @@
 """
 Constitutional AI constraints for bathymetric data processing.
+Fixed to remove OpenCV dependency and use scipy.ndimage instead.
 """
 
 import numpy as np
-import cv2
+from scipy import ndimage
 
 
 class BathymetricConstraints:
-    """Constitutional AI rules for bathymetric data cleaning."""
+    """Constitutional AI rules for bathymetric data cleaning - OpenCV-free version."""
     
     @staticmethod
     def validate_depth_continuity(data: np.ndarray, max_gradient: float = 0.1) -> np.ndarray:
@@ -21,9 +22,9 @@ class BathymetricConstraints:
     def preserve_depth_features(original: np.ndarray, cleaned: np.ndarray, 
                                feature_threshold: float = 0.05) -> np.ndarray:
         """Ensure important bathymetric features are preserved."""
-        # Detect significant depth features using Laplacian
-        laplacian_orig = cv2.Laplacian(original.astype(np.float32), cv2.CV_64F)
-        laplacian_clean = cv2.Laplacian(cleaned.astype(np.float32), cv2.CV_64F)
+        # Use scipy.ndimage Laplacian instead of OpenCV
+        laplacian_orig = ndimage.laplace(original.astype(np.float64), mode='nearest')
+        laplacian_clean = ndimage.laplace(cleaned.astype(np.float64), mode='nearest')
         
         feature_loss = np.abs(laplacian_orig - laplacian_clean)
         return feature_loss > feature_threshold
