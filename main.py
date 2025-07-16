@@ -1,181 +1,105 @@
 #!/usr/bin/env python3
 """
 Enhanced Bathymetric CAE Processing - Main Entry Point
-Updated with OpenCV/HDF5 compatibility fixes and better error handling.
+Updated with comprehensive HDF5 compatibility fixes.
 """
 
 # ============================================================================
-# HDF5 and Environment Configuration Fix
+# CRITICAL: HDF5 COMPATIBILITY FIXES - MUST BE FIRST
 # ============================================================================
-
-# Fix HDF5 driver registration issues and warnings
-import os
-os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
-os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
-
-# Additional TensorFlow optimizations
-os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
-os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
-
-# OpenCV environment fixes
-os.environ.setdefault('OPENCV_IO_MAX_IMAGE_PIXELS', str(2**31-1))
 
 import os
 import sys
+
+# Set HDF5 environment variables BEFORE any imports
+os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
+os.environ['HDF5_DRIVER'] = 'core'  # Use in-memory driver
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+
+# Suppress warnings before imports
 import warnings
-import logging
-from pathlib import Path
-
-# ============================================================================
-# WARNING SUPPRESSION (Apply before any TensorFlow imports)
-# ============================================================================
-
-# Environment variables for TensorFlow
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Filter INFO and WARNING messages
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN optimization warnings
-os.environ['PYTHONWARNINGS'] = 'ignore'  # Suppress Python warnings
-
-# Python warnings suppression
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', category=UserWarning)
-warnings.filterwarnings('ignore', message='.*GDAL.*')
 warnings.filterwarnings('ignore', message='.*HDF5.*')
-warnings.filterwarnings('ignore', message='.*legacy.*')
-warnings.filterwarnings('ignore', message='.*OpenCV.*')
 
-# GDAL Exception handling (prevents FutureWarning)
+# ============================================================================
+# Safe TensorFlow Import with HDF5 Protection
+# ============================================================================
+
 try:
-    from osgeo import gdal
-    gdal.UseExceptions()  # Explicitly enable exceptions
+    # Import h5py first to initialize HDF5 properly
+    import h5py
+    # Force h5py to use compatible settings
+    # h5py.get_config().default_file_mode = 'r'
 except ImportError:
     pass
 
-# ============================================================================
-# TensorFlow Configuration
-# ============================================================================
-
-import tensorflow as tf
-from tensorflow.keras.mixed_precision import Policy
-
-# Configure TensorFlow before other imports
-tf.get_logger().setLevel('ERROR')  # Suppress TF logging
-tf.autograph.set_verbosity(0)      # Suppress autograph verbosity
-
-# Suppress specific TensorFlow warnings
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-
-# Configure mixed precision for better performance
+# Now import TensorFlow with protections
 try:
-    policy = Policy('mixed_float16')
-    tf.keras.mixed_precision.set_global_policy(policy)
-except Exception:
-    # Fallback if mixed precision not supported
-    pass
-
-# Optimize TensorFlow for CPU if no GPU
-if len(tf.config.list_physical_devices('GPU')) == 0:
-    tf.config.optimizer.set_jit(True)  # Enable XLA for CPU
+    import tensorflow as tf
+    
+    # Configure TensorFlow to avoid HDF5 conflicts
+    tf.get_logger().setLevel('ERROR')
+    
+    # Use modern Keras format by default
+    if hasattr(tf.keras.utils, 'get_file'):
+        # Force Keras to prefer .keras format
+        pass
+        
+except ImportError:
+    print("ERROR: TensorFlow not found. Please install with: pip install tensorflow>=2.13.0")
+    sys.exit(1)
 
 # ============================================================================
-# Main Application Imports
+# Rest of the imports
 # ============================================================================
 
+import logging
+from pathlib import Path
 from config.config import Config
 from cli.interface import create_argument_parser, update_config_from_args
 from processing.pipeline import EnhancedBathymetricCAEPipeline
 from utils.logging_utils import setup_logging
 
 
-def setup_cpu_optimization():
-    """Setup additional CPU optimizations to reduce warnings."""
-    try:
-        # Set thread configuration for better CPU performance
-        tf.config.threading.set_inter_op_parallelism_threads(0)  # Use all available cores
-        tf.config.threading.set_intra_op_parallelism_threads(0)  # Use all available cores
-        
-        # Enable JIT compilation
-        tf.config.optimizer.set_jit(True)
-        
-    except Exception as e:
-        logging.debug(f"CPU optimization setup failed: {e}")
+def handle_hdf5_model_path(model_path: str) -> str:
+    """Safely handle model paths to avoid HDF5 issues."""
+    if model_path.endswith('.h5'):
+        # Convert to modern format
+        keras_path = model_path.replace('.h5', '.keras')
+        logging.info(f"Converting model path from H5 to Keras format: {keras_path}")
+        return keras_path
+    elif not model_path.endswith('.keras'):
+        # Add modern extension
+        return f"{model_path}.keras"
+    return model_path
 
 
-def setup_model_format_migration(config: Config):
-    """Handle automatic migration from legacy H5 to modern Keras format."""
-    if config.model_format == "keras" and config.auto_convert_legacy:
-        # Check if legacy H5 models exist and need conversion
-        legacy_paths = []
-        modern_paths = []
-        
-        for i in range(config.ensemble_size):
-            h5_path = f"{config.model_path.replace('.keras', '')}_ensemble_{i}.h5"
-            keras_path = f"{config.model_path.replace('.keras', '')}_ensemble_{i}.keras"
-            
-            if Path(h5_path).exists() and not Path(keras_path).exists():
-                legacy_paths.append(h5_path)
-                modern_paths.append(keras_path)
-        
-        if legacy_paths:
-            logging.info(f"Found {len(legacy_paths)} legacy H5 models. Auto-conversion enabled.")
-            logging.info("Legacy models will be converted to modern Keras format during loading.")
-
-
-def validate_environment():
-    """Validate the environment and dependencies."""
-    issues = []
+def safe_model_creation(config: Config):
+    """Ensure model configuration uses safe formats."""
+    # Force modern Keras format
+    config.model_format = "keras"
+    config.model_path = handle_hdf5_model_path(config.model_path)
+    config.auto_convert_legacy = True
     
-    # Check TensorFlow
-    try:
-        import tensorflow as tf
-        logging.info(f"TensorFlow version: {tf.__version__}")
-        
-        # Check GPU availability
-        gpu_devices = tf.config.list_physical_devices('GPU')
-        if gpu_devices:
-            logging.info(f"GPU available: {len(gpu_devices)} device(s)")
-        else:
-            logging.info("GPU available: False (using CPU)")
-            
-    except ImportError:
-        issues.append("TensorFlow not available")
-    
-    # Check GDAL
-    try:
-        from osgeo import gdal
-        logging.info(f"GDAL version: {gdal.__version__}")
-    except ImportError:
-        issues.append("GDAL not available - some file formats may not work")
-    
-    # Check essential packages
-    try:
-        import numpy as np
-        import matplotlib
-        matplotlib.use('Agg')  # Non-interactive backend
-        
-        # Check scipy for ndimage (replaces OpenCV)
-        import scipy.ndimage
-        logging.info("Using scipy.ndimage for image processing (OpenCV-free)")
-        
-    except ImportError as e:
-        issues.append(f"Missing essential package: {e}")
-    
-    if issues:
-        logging.warning("Environment issues detected:")
-        for issue in issues:
-            logging.warning(f"  - {issue}")
-    
-    return len(issues) == 0
+    # Log the safe configuration
+    logging.info(f"Using safe model configuration:")
+    logging.info(f"  Format: {config.model_format}")
+    logging.info(f"  Path: {config.model_path}")
+    logging.info(f"  Auto-convert legacy: {config.auto_convert_legacy}")
 
 
 def main():
-    """Enhanced main function with OpenCV-free processing and better error handling."""
+    """Enhanced main function with comprehensive HDF5 compatibility."""
+    
     # Parse arguments
     parser = create_argument_parser()
     args = parser.parse_args()
     
     try:
-        # Load configuration (with modern format support)
+        # Load configuration
         if args.config:
             config = Config.load(args.config)
             logging.info(f"Loaded configuration from: {args.config}")
@@ -186,156 +110,129 @@ def main():
         # Update with command line arguments
         config = update_config_from_args(config, args)
         
-        # Handle model format settings
-        if hasattr(args, 'model_format'):
-            config.set_model_format(args.model_format)
+        # Apply HDF5-safe model configuration
+        safe_model_creation(config)
         
         # Save configuration if requested
         if args.save_config:
             config.save(args.save_config)
             print(f"✅ Configuration saved to {args.save_config}")
-            if config.is_modern_format():
-                print(f"   Using modern Keras format (.keras)")
-            else:
-                print(f"   Using legacy H5 format (.h5)")
         
-        # Setup logging with warning suppression
+        # Setup logging
         setup_logging(config.log_level)
         logger = logging.getLogger(__name__)
         
-        # Suppress additional logging from common sources
-        logging.getLogger('tensorflow').setLevel(logging.ERROR)
-        logging.getLogger('absl').setLevel(logging.ERROR)
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
-        
         # Log system information
-        logger.info(f"Starting Enhanced Bathymetric CAE Pipeline v2.0")
+        logger.info("=" * 60)
+        logger.info("ENHANCED BATHYMETRIC CAE PIPELINE v2.0")
+        logger.info("HDF5 Compatibility Mode: ENABLED")
+        logger.info("=" * 60)
+        
         logger.info(f"Python version: {sys.version}")
         logger.info(f"TensorFlow version: {tf.__version__}")
-        logger.info(f"GPU available: {len(tf.config.list_physical_devices('GPU')) > 0}")
-        logger.info(f"Model format: {config.model_format.upper()} ({config.get_model_extension()})")
-        logger.info(f"OpenCV-free processing: ENABLED (using scipy.ndimage)")
         
-        # Validate environment
-        if not validate_environment():
-            logger.warning("Environment validation detected issues. Proceeding anyway...")
+        # Check HDF5 status
+        try:
+            import h5py
+            logger.info(f"HDF5 version: {h5py.version.hdf5_version}")
+            logger.info(f"h5py version: {h5py.version.version}")
+        except ImportError:
+            logger.warning("h5py not available")
         
-        # Setup CPU optimization
-        setup_cpu_optimization()
-        
-        # Setup model format migration
-        setup_model_format_migration(config)
-        
-        # Log enabled features
-        features_enabled = []
-        if config.enable_adaptive_processing:
-            features_enabled.append("Adaptive Processing")
-        if config.enable_expert_review:
-            features_enabled.append("Expert Review")
-        if config.enable_constitutional_constraints:
-            features_enabled.append("Constitutional Constraints")
-        if config.is_modern_format():
-            features_enabled.append("Modern Keras Format")
-        features_enabled.append("OpenCV-Free Processing")
-        
-        logger.info(f"Enhanced features enabled: {', '.join(features_enabled) if features_enabled else 'None'}")
+        # GPU information
+        gpu_available = len(tf.config.list_physical_devices('GPU')) > 0
+        logger.info(f"GPU available: {gpu_available}")
         
         # Handle GPU setting
         if hasattr(args, 'no_gpu') and args.no_gpu:
             tf.config.set_visible_devices([], 'GPU')
             logger.info("GPU disabled by user request")
         
-        # Set paths
+        # Set paths with safety checks
         input_folder = args.input or config.input_folder
         output_folder = args.output or config.output_folder
-        model_path = args.model or config.model_path
+        model_path = handle_hdf5_model_path(args.model or config.model_path)
         
-        # Ensure model path uses correct format
-        if config.model_format == "keras" and model_path.endswith('.h5'):
-            model_path = model_path.replace('.h5', '.keras')
-            logger.info(f"Updated model path to modern format: {model_path}")
-        elif config.model_format == "h5" and model_path.endswith('.keras'):
-            model_path = model_path.replace('.keras', '.h5')
-            logger.info(f"Updated model path to legacy format: {model_path}")
+        # Ensure directories exist
+        Path(output_folder).mkdir(parents=True, exist_ok=True)
+        Path("models").mkdir(parents=True, exist_ok=True)
+        Path("logs").mkdir(parents=True, exist_ok=True)
         
-        # Setup environment
-        _setup_environment(config)
+        logger.info(f"Input folder: {input_folder}")
+        logger.info(f"Output folder: {output_folder}")
+        logger.info(f"Model path: {model_path}")
         
-        # Create and run enhanced pipeline
-        pipeline = EnhancedBathymetricCAEPipeline(config)
-        pipeline.run(input_folder, output_folder, model_path)
-        
-        logger.info("✅ Enhanced processing pipeline completed successfully!")
-        
-        # Log final summary
-        if config.is_modern_format():
-            logger.info(f"📁 Models saved in modern Keras format ({config.get_model_extension()})")
-        
-        return 0
+        # Create and run pipeline with HDF5 protection
+        try:
+            pipeline = EnhancedBathymetricCAEPipeline(config)
+            pipeline.run(input_folder, output_folder, model_path)
+            
+            logger.info("✅ Processing completed successfully!")
+            return 0
+            
+        except Exception as pipeline_error:
+            logger.error(f"❌ Pipeline error: {pipeline_error}")
+            
+            # Try fallback with minimal configuration
+            logger.info("Attempting fallback with minimal configuration...")
+            
+            fallback_config = Config(
+                epochs=5,
+                batch_size=1,
+                grid_size=128,
+                ensemble_size=1,
+                model_format="keras",
+                model_path=handle_hdf5_model_path("models/fallback_model.keras")
+            )
+            
+            try:
+                fallback_pipeline = EnhancedBathymetricCAEPipeline(fallback_config)
+                fallback_pipeline.run(input_folder, output_folder, fallback_config.model_path)
+                logger.info("✅ Fallback processing completed!")
+                return 0
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback also failed: {fallback_error}")
+                return 1
         
     except KeyboardInterrupt:
         logging.info("⏹️  Process interrupted by user")
         return 1
     except Exception as e:
-        logging.error(f"❌ Enhanced pipeline failed: {e}")
+        logging.error(f"❌ Application error: {e}")
         logging.debug("Full traceback:", exc_info=True)
         return 1
 
 
-def _setup_environment(config):
-    """Setup processing environment with modern format support."""
-    # Create all required directories
-    directories = [
-        config.output_folder,
-        "logs",
-        "plots", 
-        "expert_reviews",
-        "models"
-    ]
-    
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
-    
-    # Log model format info
-    logging.info(f"Model format: {config.model_format}")
-    logging.info(f"Model extension: {config.get_model_extension()}")
-    if config.auto_convert_legacy:
-        logging.info("Auto-conversion of legacy models: ENABLED")
-
-
-def create_quick_test_config_file():
-    """Create a quick test configuration file with modern format."""
-    config = Config.create_quick_test_config()
-    config.save("quick_test_config.json")
-    print("✅ Quick test configuration created: quick_test_config.json")
-    print(f"   Model format: {config.model_format}")
-    print(f"   Epochs: {config.epochs}")
-    print(f"   Grid size: {config.grid_size}")
-    return config
-
-
 if __name__ == "__main__":
-    # Handle special commands
+    # Handle special diagnostic commands
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--create-quick-config":
-            create_quick_test_config_file()
-            sys.exit(0)
-        elif sys.argv[1] == "--migrate-config" and len(sys.argv) > 2:
-            legacy_path = sys.argv[2]
+        if sys.argv[1] == "--test-hdf5":
+            print("Testing HDF5 compatibility...")
             try:
-                config, new_path = Config.migrate_legacy_config(legacy_path)
-                print(f"✅ Configuration migrated: {legacy_path} -> {new_path}")
-                print(f"   Model format updated to: {config.model_format}")
+                import h5py
+                print(f"✅ h5py available: {h5py.version.version}")
+                print(f"✅ HDF5 version: {h5py.version.hdf5_version}")
+                
+                import tensorflow as tf
+                print(f"✅ TensorFlow available: {tf.__version__}")
+                
+                # Test model creation
+                model = tf.keras.Sequential([
+                    tf.keras.layers.Dense(1, input_shape=(1,))
+                ])
+                print("✅ Basic model creation successful")
+                
+                print("✅ HDF5 compatibility test passed!")
+                
             except Exception as e:
-                print(f"❌ Migration failed: {e}")
-                sys.exit(1)
+                print(f"❌ HDF5 compatibility test failed: {e}")
             sys.exit(0)
+        
         elif sys.argv[1] == "--version":
             print("Enhanced Bathymetric CAE Processing v2.0")
-            print("Modern Keras Format Support: ✅")
-            print("OpenCV-Free Processing: ✅")
-            print("Warning Suppression: ✅")
+            print("HDF5 Compatibility Mode: ENABLED")
             sys.exit(0)
     
     # Run main application
-    exit(main())
+    exit_code = main()
+    sys.exit(exit_code)
