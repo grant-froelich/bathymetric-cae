@@ -302,10 +302,16 @@ class EnhancedBathymetricCAEPipeline:
             
             # Use legacy ModelCheckpoint format for compatibility
             self.logger.info("Using legacy ModelCheckpoint format")
+            
+            # FIXED: Choose monitor metric based on validation split
+            monitor_metric = 'val_loss' if validation_split > 0 else 'loss'
+            
             checkpoint_callback = callbacks.ModelCheckpoint(
                 str(ensemble_model_path),
                 save_best_only=True,
-                monitor='val_loss' if validation_split > 0 else 'loss'
+                monitor=monitor_metric,  # Use appropriate metric based on validation split
+                mode='min',
+                verbose=0
             )
             callbacks_list.append(checkpoint_callback)
             
@@ -590,41 +596,35 @@ class EnhancedBathymetricCAEPipeline:
     def _calculate_comprehensive_quality_metrics(self, original: np.ndarray, 
                                                cleaned: np.ndarray,
                                                uncertainty: Optional[np.ndarray] = None) -> Dict:
-        """Calculate comprehensive quality metrics with error handling."""
+        """Calculate comprehensive quality metrics with error handling.
+        
+        FIXED: Use the comprehensive quality metrics from BathymetricQualityMetrics class.
+        """
         try:
-            # Calculate core quality metrics
-            metrics = {
-                'ssim': self.quality_metrics.calculate_ssim(original, cleaned),
-                'roughness': self.quality_metrics.calculate_roughness(cleaned),
-                'feature_preservation': self.quality_metrics.calculate_feature_preservation(original, cleaned),
-                'consistency': self.quality_metrics.calculate_depth_consistency(cleaned),
-                'hydrographic_compliance': self.quality_metrics.calculate_hydrographic_standards_compliance(cleaned)
-            }
-            
-            # Calculate uncertainty metrics if available
-            if uncertainty is not None:
-                uncertainty_metrics = self._calculate_uncertainty_metrics(uncertainty, cleaned)
-                metrics.update(uncertainty_metrics)
-            
-            # Calculate composite quality score
-            metrics['composite_quality'] = (
-                self.config.ssim_weight * metrics['ssim'] +
-                self.config.roughness_weight * max(0, 1.0 - metrics['roughness']) +
-                self.config.feature_preservation_weight * metrics['feature_preservation'] +
-                self.config.consistency_weight * metrics['consistency']
+            # Use the comprehensive quality calculation from the metrics class
+            metrics = self.quality_metrics.calculate_composite_quality(
+                original, cleaned, uncertainty,
+                weights={
+                    'ssim_weight': self.config.ssim_weight,
+                    'roughness_weight': self.config.roughness_weight,
+                    'feature_preservation_weight': self.config.feature_preservation_weight,
+                    'consistency_weight': self.config.consistency_weight
+                }
             )
             
             return metrics
             
         except Exception as e:
-            self.logger.error(f"Error calculating quality metrics: {e}")
+            self.logger.error(f"Error calculating comprehensive quality metrics: {e}")
             return {
                 'composite_quality': 0.5,
                 'ssim': 0.0,
                 'roughness': 1.0,
                 'feature_preservation': 0.0,
                 'consistency': 0.0,
-                'hydrographic_compliance': 0.0
+                'hydrographic_compliance': 0.0,
+                'mae': float('inf'),
+                'rmse': float('inf')
             }
     
     def _calculate_uncertainty_metrics(self, uncertainty_data: np.ndarray, 
@@ -726,28 +726,42 @@ class EnhancedBathymetricCAEPipeline:
             raise
     
     def _flag_for_expert_review(self, filename: str, stats: Dict):
-        """Flag file for expert review based on quality metrics."""
+        """Flag file for expert review based on quality metrics.
+        
+        FIXED: Updated to match ExpertReviewSystem.flag_for_review API signature.
+        """
         if not self.expert_review:
             return
         
         try:
-            review_data = {
-                'filename': filename,
-                'flagged_date': datetime.datetime.now().isoformat(),
-                'composite_quality': stats.get('composite_quality', 0),
-                'seafloor_type': stats.get('seafloor_type', 'unknown'),
-                'ssim': stats.get('ssim', 0),
-                'feature_preservation': stats.get('feature_preservation', 0),
-                'consistency': stats.get('consistency', 0),
-                'hydrographic_compliance': stats.get('hydrographic_compliance', 0),
-                'flag_reason': 'Quality below threshold'
-            }
+            # Determine flag type based on quality metrics
+            quality_score = stats.get('composite_quality', 1.0)
             
-            self.expert_review.flag_for_review(review_data)
-            self.logger.info(f"Flagged {filename} for expert review (Quality: {stats.get('composite_quality', 0):.3f})")
+            # Determine flag type based on specific quality issues
+            if stats.get('feature_preservation', 1.0) < 0.5:
+                flag_type = "feature_loss"
+            elif stats.get('hydrographic_compliance', 1.0) < 0.7:
+                flag_type = "standards_violation"
+            elif stats.get('ssim', 1.0) < 0.6:
+                flag_type = "poor_similarity"
+            else:
+                flag_type = "low_quality"
+            
+            # Calculate confidence as inverse of quality (higher confidence = lower quality)
+            confidence = max(0.1, 1.0 - quality_score)
+            
+            # Define region (simplified - entire file region)
+            # In practice, this could be more sophisticated region detection
+            region = (0, 0, 512, 512)  # (x_start, y_start, x_end, y_end)
+            
+            # Flag for expert review with correct API signature
+            self.expert_review.flag_for_review(filename, region, flag_type, confidence)
+            
+            self.logger.info(f"Flagged {filename} for expert review (Quality: {quality_score:.3f})")
             
         except Exception as e:
             self.logger.error(f"Error flagging {filename} for expert review: {e}")
+            # Continue processing even if expert review flagging fails
     
     def _generate_comprehensive_reports(self):
         """Generate comprehensive processing reports."""
