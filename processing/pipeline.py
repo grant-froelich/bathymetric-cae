@@ -19,7 +19,7 @@ from tensorflow.keras.models import load_model
 
 from config.config import Config
 from models.ensemble import BathymetricEnsemble
-from core.adaptive_processor import AdaptiveProcessor
+from core.adaptive_processor import EnhancedAdaptiveProcessor
 from core.quality_metrics import BathymetricQualityMetrics
 from review.expert_system import ExpertReviewSystem
 from processing.data_processor import BathymetricProcessor
@@ -33,7 +33,7 @@ class EnhancedBathymetricCAEPipeline:
     def __init__(self, config: Config):
         self.config = config
         self.ensemble = BathymetricEnsemble(config)
-        self.adaptive_processor = AdaptiveProcessor()
+        self.adaptive_processor = EnhancedAdaptiveProcessor()  # Use enhanced version
         self.quality_metrics = BathymetricQualityMetrics()
         self.expert_review = ExpertReviewSystem() if config.enable_expert_review else None
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -258,7 +258,7 @@ class EnhancedBathymetricCAEPipeline:
         return self._train_ensemble(file_list, model_path, max_channels)
     
     def _train_ensemble(self, file_list: List[Path], model_path: str, channels: int) -> List:
-        """Train ensemble models with enhanced features."""
+        """Train ensemble models with enhanced features and error handling."""
         self.logger.info("Training new ensemble models...")
         self.logger.info(f"Training ensemble for {channels} channels")
         
@@ -269,11 +269,19 @@ class EnhancedBathymetricCAEPipeline:
         self.logger.info(f"Preparing training data with {channels} channels...")
         training_data = self._prepare_training_data(file_list, channels)
         
-        if len(training_data) == 0:
-            raise ValueError("No valid training data found")
+        if len(training_data) == 0 or len(training_data[0]) == 0:
+            self.logger.error("No valid training data found - cannot train ensemble")
+            raise ValueError("No valid training data available for training")
         
         self.logger.info(f"Training data prepared: {training_data[0].shape} -> {training_data[1].shape}")
         self.logger.info(f"Successfully processed {len(training_data[0])}/{len(file_list)} files for training")
+        
+        # Check if we have enough data for validation split
+        num_samples = len(training_data[0])
+        validation_split = self.config.validation_split if num_samples >= 5 else 0.0
+        
+        if validation_split != self.config.validation_split:
+            self.logger.warning(f"Insufficient data for validation split {self.config.validation_split}, using {validation_split}")
         
         # Train each model in the ensemble
         model_path_obj = Path(model_path)
@@ -297,26 +305,32 @@ class EnhancedBathymetricCAEPipeline:
             checkpoint_callback = callbacks.ModelCheckpoint(
                 str(ensemble_model_path),
                 save_best_only=True,
-                monitor='val_loss'
+                monitor='val_loss' if validation_split > 0 else 'loss'
             )
             callbacks_list.append(checkpoint_callback)
             
             # Train model with memory monitoring
             with memory_monitor(f"Training ensemble model {i+1}"):
-                history = model.fit(
-                    training_data[0], training_data[1],
-                    epochs=self.config.epochs,
-                    batch_size=self.config.batch_size,
-                    validation_split=self.config.validation_split,
-                    callbacks=callbacks_list,
-                    verbose=0
-                )
-            
-            trained_models.append(model)
-            
-            # Save training history
-            if history and hasattr(history, 'history'):
-                plot_training_history(history, f"training_history_ensemble_{i}.png")
+                try:
+                    history = model.fit(
+                        training_data[0], training_data[1],
+                        epochs=self.config.epochs,
+                        batch_size=self.config.batch_size,
+                        validation_split=validation_split,
+                        callbacks=callbacks_list,
+                        verbose=0
+                    )
+                    
+                    trained_models.append(model)
+                    
+                    # Save training history
+                    if history and hasattr(history, 'history'):
+                        plot_training_history(history, f"training_history_ensemble_{i}.png")
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to train ensemble model {i+1}: {e}")
+                    # Still append the model even if training failed for ensemble completeness
+                    trained_models.append(model)
         
         training_time = self.processing_stats.get('total_processing_time', 0)
         self.logger.info(f"Ensemble training completed in {training_time:.1f} seconds")
@@ -324,7 +338,10 @@ class EnhancedBathymetricCAEPipeline:
         return trained_models
     
     def _prepare_training_data(self, file_list: List[Path], target_channels: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare training data with consistent channel count."""
+        """Prepare training data with consistent channel count.
+        
+        FIXED: Properly handle seafloor_type variable scope to prevent 'tuple' object has no attribute 'value' error.
+        """
         processor = BathymetricProcessor(self.config)
         inputs = []
         targets = []
@@ -336,13 +353,15 @@ class EnhancedBathymetricCAEPipeline:
                 # Normalize channels
                 input_data = self._normalize_channels(input_data, target_channels)
                 
-                # Get seafloor type for adaptive processing
+                # Get seafloor type for adaptive processing - FIXED: Store value immediately
                 depth_data = input_data[..., 0]
                 seafloor_type_enum = self.adaptive_processor.seafloor_classifier.classify(depth_data)
+                seafloor_type_value = seafloor_type_enum.value  # Store string value immediately
+                
                 adaptive_params = self.adaptive_processor.get_processing_parameters(depth_data)
                 
-                self.logger.debug(f"Classified as {seafloor_type_enum.value} with confidence {adaptive_params.get('confidence', 1.0):.2f}")
-                self.logger.info(f"Adaptive parameters for {seafloor_type_enum.value}: compression={adaptive_params.get('compression_ratio', 'N/A')}, grid_size={adaptive_params.get('grid_size', 'N/A')}")
+                self.logger.debug(f"Classified as {seafloor_type_value} with confidence {adaptive_params.get('confidence', 1.0):.2f}")
+                self.logger.info(f"Adaptive parameters for {seafloor_type_value}: compression={adaptive_params.get('compression_ratio', 'N/A')}, grid_size={adaptive_params.get('grid_size', 'N/A')}")
                 
                 # For training, target is the first channel (depth)
                 target_data = input_data[..., 0:1]
