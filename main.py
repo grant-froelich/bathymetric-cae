@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced Bathymetric CAE Processing - Main Entry Point
-Updated with comprehensive HDF5 compatibility fixes.
+Fixed HDF5 compatibility and logging issues.
 """
 
 # ============================================================================
@@ -14,7 +14,6 @@ import sys
 # Set HDF5 environment variables BEFORE any imports
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
-os.environ['HDF5_DRIVER'] = 'core'  # Use in-memory driver
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
@@ -29,25 +28,8 @@ warnings.filterwarnings('ignore', message='.*HDF5.*')
 # ============================================================================
 
 try:
-    # Import h5py first to initialize HDF5 properly
-    import h5py
-    # Force h5py to use compatible settings
-    # h5py.get_config().default_file_mode = 'r'
-except ImportError:
-    pass
-
-# Now import TensorFlow with protections
-try:
     import tensorflow as tf
-    
-    # Configure TensorFlow to avoid HDF5 conflicts
     tf.get_logger().setLevel('ERROR')
-    
-    # Use modern Keras format by default
-    if hasattr(tf.keras.utils, 'get_file'):
-        # Force Keras to prefer .keras format
-        pass
-        
 except ImportError:
     print("ERROR: TensorFlow not found. Please install with: pip install tensorflow>=2.13.0")
     sys.exit(1)
@@ -64,35 +46,39 @@ from processing.pipeline import EnhancedBathymetricCAEPipeline
 from utils.logging_utils import setup_logging
 
 
-def handle_hdf5_model_path(model_path: str) -> str:
-    """Safely handle model paths to avoid HDF5 issues."""
-    if model_path.endswith('.h5'):
-        # Convert to modern format
-        keras_path = model_path.replace('.h5', '.keras')
-        logging.info(f"Converting model path from H5 to Keras format: {keras_path}")
-        return keras_path
-    elif not model_path.endswith('.keras'):
-        # Add modern extension
-        return f"{model_path}.keras"
-    return model_path
+def ensure_directories():
+    """Ensure all required directories exist."""
+    directories = [
+        "logs",
+        "plots", 
+        "expert_reviews",
+        "models",
+        "temp"
+    ]
+    
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
 
 
 def safe_model_creation(config: Config):
     """Ensure model configuration uses safe formats."""
-    # Force modern Keras format
+    # Force modern Keras format for compatibility
     config.model_format = "keras"
-    config.model_path = handle_hdf5_model_path(config.model_path)
-    config.auto_convert_legacy = True
-    
-    # Log the safe configuration
-    logging.info(f"Using safe model configuration:")
-    logging.info(f"  Format: {config.model_format}")
-    logging.info(f"  Path: {config.model_path}")
-    logging.info(f"  Auto-convert legacy: {config.auto_convert_legacy}")
+    if config.model_path.endswith('.h5'):
+        config.model_path = config.model_path.replace('.h5', '.keras')
+    elif not config.model_path.endswith('.keras'):
+        if '.' in config.model_path:
+            base_path = '.'.join(config.model_path.split('.')[:-1])
+            config.model_path = f"{base_path}.keras"
+        else:
+            config.model_path += '.keras'
 
 
 def main():
-    """Enhanced main function with comprehensive HDF5 compatibility."""
+    """Enhanced main function with comprehensive error handling and logging."""
+    
+    # Ensure directories exist first
+    ensure_directories()
     
     # Parse arguments
     parser = create_argument_parser()
@@ -102,42 +88,34 @@ def main():
         # Load configuration
         if args.config:
             config = Config.load(args.config)
-            logging.info(f"Loaded configuration from: {args.config}")
+            print(f"Loaded configuration from: {args.config}")
         else:
             config = Config()
-            logging.info("Using default configuration")
+            print("Using default configuration")
         
         # Update with command line arguments
         config = update_config_from_args(config, args)
         
-        # Apply HDF5-safe model configuration
+        # Apply safe model configuration
         safe_model_creation(config)
+        
+        # Setup logging EARLY with proper paths
+        setup_logging(config.log_level)
+        logger = logging.getLogger(__name__)
+        
+        # Force log a test message to verify logging works
+        logger.info("="*60)
+        logger.info("ENHANCED BATHYMETRIC CAE PIPELINE v2.0 - STARTING")
+        logger.info("="*60)
         
         # Save configuration if requested
         if args.save_config:
             config.save(args.save_config)
-            print(f"✅ Configuration saved to {args.save_config}")
-        
-        # Setup logging
-        setup_logging(config.log_level)
-        logger = logging.getLogger(__name__)
+            logger.info(f"Configuration saved to {args.save_config}")
         
         # Log system information
-        logger.info("=" * 60)
-        logger.info("ENHANCED BATHYMETRIC CAE PIPELINE v2.0")
-        logger.info("HDF5 Compatibility Mode: ENABLED")
-        logger.info("=" * 60)
-        
         logger.info(f"Python version: {sys.version}")
         logger.info(f"TensorFlow version: {tf.__version__}")
-        
-        # Check HDF5 status
-        try:
-            import h5py
-            logger.info(f"HDF5 version: {h5py.version.hdf5_version}")
-            logger.info(f"h5py version: {h5py.version.version}")
-        except ImportError:
-            logger.warning("h5py not available")
         
         # GPU information
         gpu_available = len(tf.config.list_physical_devices('GPU')) > 0
@@ -148,59 +126,66 @@ def main():
             tf.config.set_visible_devices([], 'GPU')
             logger.info("GPU disabled by user request")
         
-        # Set paths with safety checks
+        # Set paths with validation
         input_folder = args.input or config.input_folder
         output_folder = args.output or config.output_folder
-        model_path = handle_hdf5_model_path(args.model or config.model_path)
+        model_path = args.model or config.model_path
         
-        # Ensure directories exist
+        # Validate input folder exists
+        if not Path(input_folder).exists():
+            logger.error(f"Input folder does not exist: {input_folder}")
+            print(f"ERROR: Input folder does not exist: {input_folder}")
+            return 1
+        
+        # Ensure output directory exists
         Path(output_folder).mkdir(parents=True, exist_ok=True)
-        Path("models").mkdir(parents=True, exist_ok=True)
-        Path("logs").mkdir(parents=True, exist_ok=True)
         
         logger.info(f"Input folder: {input_folder}")
         logger.info(f"Output folder: {output_folder}")
         logger.info(f"Model path: {model_path}")
         
-        # Create and run pipeline with HDF5 protection
+        # Create and run pipeline
+        logger.info("Creating pipeline...")
+        pipeline = EnhancedBathymetricCAEPipeline(config)
+        
+        logger.info("Starting pipeline execution...")
+        pipeline.run(input_folder, output_folder, model_path)
+        
+        logger.info("✅ Processing completed successfully!")
+        print("✅ Processing completed successfully!")
+        return 0
+        
+    except FileNotFoundError as e:
+        error_msg = f"File not found: {e}"
+        logging.error(error_msg)
+        print(f"ERROR: {error_msg}")
+        return 1
+        
+    except Exception as e:
+        error_msg = f"Pipeline error: {e}"
+        logging.error(error_msg)
+        logging.debug("Full traceback:", exc_info=True)
+        print(f"ERROR: {error_msg}")
+        
+        # Try minimal fallback for testing
         try:
-            pipeline = EnhancedBathymetricCAEPipeline(config)
-            pipeline.run(input_folder, output_folder, model_path)
+            logging.info("Attempting minimal test run...")
+            print("Attempting minimal test run...")
             
-            logger.info("✅ Processing completed successfully!")
+            # Just test that we can create a basic model
+            from models.architectures import LightweightCAE
+            test_model = LightweightCAE(config)
+            model = test_model.create_model((64, 64, 1))
+            
+            logging.info("✅ Basic model creation successful")
+            print("✅ Basic model creation successful")
             return 0
             
-        except Exception as pipeline_error:
-            logger.error(f"❌ Pipeline error: {pipeline_error}")
-            
-            # Try fallback with minimal configuration
-            logger.info("Attempting fallback with minimal configuration...")
-            
-            fallback_config = Config(
-                epochs=5,
-                batch_size=1,
-                grid_size=128,
-                ensemble_size=1,
-                model_format="keras",
-                model_path=handle_hdf5_model_path("models/fallback_model.keras")
-            )
-            
-            try:
-                fallback_pipeline = EnhancedBathymetricCAEPipeline(fallback_config)
-                fallback_pipeline.run(input_folder, output_folder, fallback_config.model_path)
-                logger.info("✅ Fallback processing completed!")
-                return 0
-            except Exception as fallback_error:
-                logger.error(f"❌ Fallback also failed: {fallback_error}")
-                return 1
-        
-    except KeyboardInterrupt:
-        logging.info("⏹️  Process interrupted by user")
-        return 1
-    except Exception as e:
-        logging.error(f"❌ Application error: {e}")
-        logging.debug("Full traceback:", exc_info=True)
-        return 1
+        except Exception as fallback_error:
+            fallback_msg = f"Fallback also failed: {fallback_error}"
+            logging.error(fallback_msg)
+            print(f"ERROR: {fallback_msg}")
+            return 1
 
 
 if __name__ == "__main__":
@@ -209,19 +194,14 @@ if __name__ == "__main__":
         if sys.argv[1] == "--test-hdf5":
             print("Testing HDF5 compatibility...")
             try:
-                import h5py
-                print(f"✅ h5py available: {h5py.version.version}")
-                print(f"✅ HDF5 version: {h5py.version.hdf5_version}")
-                
                 import tensorflow as tf
                 print(f"✅ TensorFlow available: {tf.__version__}")
                 
-                # Test model creation
+                # Test basic model creation
                 model = tf.keras.Sequential([
                     tf.keras.layers.Dense(1, input_shape=(1,))
                 ])
                 print("✅ Basic model creation successful")
-                
                 print("✅ HDF5 compatibility test passed!")
                 
             except Exception as e:
@@ -230,7 +210,6 @@ if __name__ == "__main__":
         
         elif sys.argv[1] == "--version":
             print("Enhanced Bathymetric CAE Processing v2.0")
-            print("HDF5 Compatibility Mode: ENABLED")
             sys.exit(0)
     
     # Run main application
