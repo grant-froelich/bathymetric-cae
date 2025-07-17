@@ -1,188 +1,32 @@
 """
-Quality metrics for bathymetric data assessment - COMPLETELY OpenCV-Free Version.
-Fixed to eliminate all OpenCV dependencies and compatibility issues.
+Quality metrics for bathymetric data processing.
+FIXED: Added missing calculate_ssim method and improved error handling.
 """
 
 import numpy as np
 import logging
-from typing import Optional
+from typing import Optional, Tuple, Union
 from scipy import ndimage
+from skimage.metrics import structural_similarity as ssim
 
 
 class BathymetricQualityMetrics:
-    """Domain-specific quality metrics for bathymetric data - OpenCV-free version."""
+    """Comprehensive quality metrics for bathymetric data processing."""
     
-    @staticmethod
-    def _ensure_compatible_array(data: np.ndarray) -> np.ndarray:
-        """Ensure array is compatible with processing operations."""
-        # Convert to float64 for better numerical stability
-        if data.dtype != np.float64:
-            data = data.astype(np.float64)
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+    
+    def calculate_ssim(self, original: np.ndarray, processed: np.ndarray) -> float:
+        """Calculate Structural Similarity Index (SSIM) between original and processed data.
         
-        # Handle NaN and infinite values
-        if np.any(~np.isfinite(data)):
-            data = np.where(np.isfinite(data), data, 0)
-        
-        # Ensure data is 2D
-        if data.ndim != 2:
-            if data.ndim == 3 and data.shape[-1] == 1:
-                data = data.squeeze(-1)
-            else:
-                raise ValueError(f"Expected 2D array, got shape {data.shape}")
-        
-        return data
+        FIXED: Added missing calculate_ssim method that was being called by the pipeline.
+        """
+        return self.calculate_ssim_safe(original, processed)
     
     @staticmethod
-    def calculate_roughness(data: np.ndarray) -> float:
-        """Calculate seafloor roughness using standard deviation of slopes."""
-        try:
-            data = BathymetricQualityMetrics._ensure_compatible_array(data)
-            
-            # Use NumPy gradient instead of OpenCV
-            grad_y, grad_x = np.gradient(data)
-            slope = np.sqrt(grad_x**2 + grad_y**2)
-            
-            finite_slopes = slope[np.isfinite(slope)]
-            if len(finite_slopes) > 0:
-                return float(np.std(finite_slopes))
-            else:
-                return 0.0
-                
-        except Exception as e:
-            logging.error(f"Error calculating roughness: {e}")
-            return 0.0
-    
-    @staticmethod
-    def calculate_feature_preservation(original: np.ndarray, cleaned: np.ndarray) -> float:
-        """Calculate how well bathymetric features are preserved."""
-        try:
-            original = BathymetricQualityMetrics._ensure_compatible_array(original)
-            cleaned = BathymetricQualityMetrics._ensure_compatible_array(cleaned)
-            
-            if original.shape != cleaned.shape:
-                logging.warning("Shape mismatch in feature preservation calculation")
-                return 0.0
-            
-            # Use pure scipy.ndimage Laplacian - NO OpenCV
-            laplacian_orig = BathymetricQualityMetrics._scipy_laplacian(original)
-            laplacian_clean = BathymetricQualityMetrics._scipy_laplacian(cleaned)
-            
-            # Calculate correlation
-            orig_flat = laplacian_orig.flatten()
-            clean_flat = laplacian_clean.flatten()
-            
-            finite_mask = np.isfinite(orig_flat) & np.isfinite(clean_flat)
-            if np.sum(finite_mask) < 2:
-                return 0.0
-            
-            orig_finite = orig_flat[finite_mask]
-            clean_finite = clean_flat[finite_mask]
-            
-            if np.std(orig_finite) == 0 or np.std(clean_finite) == 0:
-                return 1.0 if np.array_equal(orig_finite, clean_finite) else 0.0
-            
-            correlation_matrix = np.corrcoef(orig_finite, clean_finite)
-            correlation = correlation_matrix[0, 1]
-            
-            return float(correlation) if np.isfinite(correlation) else 0.0
-            
-        except Exception as e:
-            logging.error(f"Error calculating feature preservation: {e}")
-            return 0.0
-    
-    @staticmethod
-    def _scipy_laplacian(data: np.ndarray) -> np.ndarray:
-        """Calculate Laplacian using ONLY scipy.ndimage - NO OpenCV."""
-        try:
-            # Ensure data is float64 for numerical stability
-            data = data.astype(np.float64)
-            
-            # Use scipy's Laplacian filter
-            return ndimage.laplace(data, mode='nearest')
-            
-        except Exception as e:
-            logging.error(f"Error in scipy Laplacian calculation: {e}")
-            # Fallback to manual convolution
-            return BathymetricQualityMetrics._manual_laplacian(data)
-    
-    @staticmethod
-    def _manual_laplacian(data: np.ndarray) -> np.ndarray:
-        """Manual Laplacian calculation as fallback."""
-        try:
-            # Ensure float64
-            data = data.astype(np.float64)
-            
-            kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float64)
-            
-            # Use scipy.ndimage.convolve instead of manual convolution
-            return ndimage.convolve(data, kernel, mode='constant', cval=0.0)
-            
-        except Exception as e:
-            logging.error(f"Error in manual Laplacian: {e}")
-            # Ultimate fallback - return zeros
-            return np.zeros_like(data, dtype=np.float64)
-    
-    @staticmethod
-    def calculate_depth_consistency(data: np.ndarray) -> float:
-        """Calculate consistency of depth measurements using ONLY scipy."""
-        try:
-            data = BathymetricQualityMetrics._ensure_compatible_array(data)
-            
-            # Use scipy.ndimage for local variance calculation
-            # Create a uniform filter for local mean
-            local_mean = ndimage.uniform_filter(data, size=3, mode='nearest')
-            
-            # Calculate local variance
-            data_squared = data * data
-            local_mean_squared = ndimage.uniform_filter(data_squared, size=3, mode='nearest')
-            local_variance = local_mean_squared - local_mean * local_mean
-            
-            finite_variance = local_variance[np.isfinite(local_variance)]
-            if len(finite_variance) > 0:
-                consistency = 1.0 / (1.0 + np.mean(finite_variance))
-                return float(consistency)
-            else:
-                return 0.0
-                
-        except Exception as e:
-            logging.error(f"Error calculating depth consistency: {e}")
-            return 0.0
-    
-    @staticmethod
-    def calculate_hydrographic_standards_compliance(data: np.ndarray, 
-                                                  uncertainty: Optional[np.ndarray] = None) -> float:
-        """Calculate compliance with IHO hydrographic standards."""
-        try:
-            data = BathymetricQualityMetrics._ensure_compatible_array(data)
-            
-            if uncertainty is None:
-                # Simple uncertainty estimation
-                uncertainty = np.abs(data * 0.02) + 0.1
-            else:
-                uncertainty = BathymetricQualityMetrics._ensure_compatible_array(uncertainty)
-            
-            # IHO S-44 standards (simplified)
-            depth_dependent_uncertainty = 0.5 + 0.013 * np.abs(data)
-            
-            compliance_mask = uncertainty <= depth_dependent_uncertainty
-            finite_mask = np.isfinite(uncertainty) & np.isfinite(depth_dependent_uncertainty)
-            
-            if np.sum(finite_mask) > 0:
-                compliance = np.sum(compliance_mask & finite_mask) / np.sum(finite_mask)
-                return float(compliance)
-            else:
-                return 0.0
-                
-        except Exception as e:
-            logging.error(f"Error calculating hydrographic standards compliance: {e}")
-            return 0.0
-
-    @staticmethod 
     def calculate_ssim_safe(original: np.ndarray, cleaned: np.ndarray) -> float:
         """Calculate SSIM with comprehensive error handling."""
         try:
-            from skimage.metrics import structural_similarity as ssim
-            
             if original.shape != cleaned.shape:
                 logging.warning("Shape mismatch in SSIM calculation")
                 return 0.0
@@ -191,19 +35,286 @@ class BathymetricQualityMetrics:
             original = original.astype(np.float64)
             cleaned = cleaned.astype(np.float64)
             
+            # Handle non-finite values
             if not (np.isfinite(original).all() and np.isfinite(cleaned).all()):
                 logging.warning("Non-finite values in SSIM calculation")
-                return 0.0
+                # Mask out non-finite values
+                mask = np.isfinite(original) & np.isfinite(cleaned)
+                if np.sum(mask) < original.size * 0.1:  # Less than 10% valid data
+                    return 0.0
+                
+                # Use only finite values
+                original = original[mask]
+                cleaned = cleaned[mask]
+                
+                # Reshape to 2D if needed for SSIM
+                if original.size < 49:  # Minimum size for 7x7 window
+                    return 0.0
+                
+                # For 1D data, reshape to approximate square
+                side_length = int(np.sqrt(original.size))
+                original = original[:side_length*side_length].reshape(side_length, side_length)
+                cleaned = cleaned[:side_length*side_length].reshape(side_length, side_length)
             
+            # Calculate data range
             data_range = float(max(cleaned.max() - cleaned.min(), 1e-8))
             
-            return ssim(
+            # Determine appropriate window size
+            min_dim = min(original.shape[-2:])
+            win_size = min(7, min_dim if min_dim % 2 == 1 else min_dim - 1)
+            win_size = max(3, win_size)  # Minimum window size of 3
+            
+            # Calculate SSIM
+            ssim_value = ssim(
                 original,
                 cleaned,
                 data_range=data_range,
                 gaussian_weights=True,
-                win_size=min(7, min(original.shape[-2:]))
+                win_size=win_size
             )
+            
+            return float(ssim_value)
+            
         except Exception as e:
             logging.error(f"Error calculating SSIM: {e}")
             return 0.0
+    
+    @staticmethod
+    def calculate_roughness(data: np.ndarray) -> float:
+        """Calculate surface roughness metric."""
+        try:
+            data = BathymetricQualityMetrics._ensure_compatible_array(data)
+            
+            if data.size == 0:
+                return 0.0
+            
+            # Calculate gradient magnitude
+            grad_y, grad_x = np.gradient(data)
+            gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+            
+            # Handle non-finite gradients
+            finite_gradients = gradient_magnitude[np.isfinite(gradient_magnitude)]
+            if len(finite_gradients) == 0:
+                return 0.0
+            
+            # Roughness as normalized standard deviation of gradients
+            roughness = np.std(finite_gradients) / (np.mean(np.abs(finite_gradients)) + 1e-8)
+            
+            return float(roughness)
+            
+        except Exception as e:
+            logging.error(f"Error calculating roughness: {e}")
+            return 0.0
+    
+    @staticmethod
+    def calculate_feature_preservation(original: np.ndarray, processed: np.ndarray) -> float:
+        """Calculate feature preservation score."""
+        try:
+            original = BathymetricQualityMetrics._ensure_compatible_array(original)
+            processed = BathymetricQualityMetrics._ensure_compatible_array(processed)
+            
+            if original.shape != processed.shape:
+                logging.warning("Shape mismatch in feature preservation calculation")
+                return 0.0
+            
+            if original.size == 0:
+                return 0.0
+            
+            # Calculate edge maps using Sobel filter
+            from scipy import ndimage
+            
+            original_edges = ndimage.sobel(original)
+            processed_edges = ndimage.sobel(processed)
+            
+            # Handle non-finite values
+            orig_finite = np.isfinite(original_edges)
+            proc_finite = np.isfinite(processed_edges)
+            valid_mask = orig_finite & proc_finite
+            
+            if np.sum(valid_mask) == 0:
+                return 0.0
+            
+            # Calculate correlation between edge maps
+            orig_edges_valid = original_edges[valid_mask]
+            proc_edges_valid = processed_edges[valid_mask]
+            
+            if len(orig_edges_valid) < 2:
+                return 0.0
+            
+            # Normalize edge values
+            orig_edges_norm = (orig_edges_valid - np.mean(orig_edges_valid)) / (np.std(orig_edges_valid) + 1e-8)
+            proc_edges_norm = (proc_edges_valid - np.mean(proc_edges_valid)) / (np.std(proc_edges_valid) + 1e-8)
+            
+            # Calculate correlation coefficient
+            correlation = np.corrcoef(orig_edges_norm, proc_edges_norm)[0, 1]
+            
+            if np.isfinite(correlation):
+                return float(max(0.0, correlation))  # Ensure non-negative
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logging.error(f"Error calculating feature preservation: {e}")
+            return 0.0
+    
+    @staticmethod
+    def calculate_depth_consistency(data: np.ndarray) -> float:
+        """Calculate depth consistency metric."""
+        try:
+            data = BathymetricQualityMetrics._ensure_compatible_array(data)
+            
+            if data.size == 0:
+                return 0.0
+            
+            # Use 3x3 neighborhood for consistency check
+            kernel = np.ones((3, 3)) / 9
+            local_mean = ndimage.convolve(data, kernel, mode='constant', cval=np.nan)
+            
+            # Calculate local deviation
+            deviation = np.abs(data - local_mean)
+            
+            # Handle non-finite values
+            finite_mask = np.isfinite(deviation)
+            if np.sum(finite_mask) == 0:
+                return 0.0
+            
+            finite_deviation = deviation[finite_mask]
+            finite_data = data[finite_mask]
+            
+            # Consistency as inverse of normalized deviation
+            mean_depth = np.mean(np.abs(finite_data))
+            mean_deviation = np.mean(finite_deviation)
+            
+            if mean_depth == 0:
+                return 1.0 if mean_deviation == 0 else 0.0
+            
+            consistency = 1.0 / (1.0 + mean_deviation / mean_depth)
+            
+            return float(consistency)
+            
+        except Exception as e:
+            logging.error(f"Error calculating depth consistency: {e}")
+            return 0.0
+    
+    @staticmethod
+    def calculate_hydrographic_standards_compliance(data: np.ndarray, 
+                                                   uncertainty: Optional[np.ndarray] = None) -> float:
+        """Calculate compliance with IHO S-44 hydrographic standards."""
+        try:
+            data = BathymetricQualityMetrics._ensure_compatible_array(data)
+            
+            if uncertainty is None:
+                # Simple uncertainty estimation based on depth
+                uncertainty = np.abs(data * 0.02) + 0.1
+            else:
+                uncertainty = BathymetricQualityMetrics._ensure_compatible_array(uncertainty)
+            
+            # IHO S-44 standards (simplified) - Order 1a
+            # Total vertical uncertainty = √(a² + (b×d)²)
+            # where a = 0.5m, b = 0.013, d = depth
+            a = 0.5  # Fixed component (meters)
+            b = 0.013  # Depth-dependent component (ratio)
+            
+            depth_dependent_uncertainty = np.sqrt(a**2 + (b * np.abs(data))**2)
+            
+            # Check compliance
+            compliance_mask = uncertainty <= depth_dependent_uncertainty
+            finite_mask = np.isfinite(uncertainty) & np.isfinite(depth_dependent_uncertainty)
+            
+            if np.sum(finite_mask) == 0:
+                return 0.0
+            
+            total_valid = np.sum(finite_mask)
+            compliant_valid = np.sum(compliance_mask & finite_mask)
+            
+            compliance_ratio = compliant_valid / total_valid
+            
+            return float(compliance_ratio)
+                
+        except Exception as e:
+            logging.error(f"Error calculating hydrographic standards compliance: {e}")
+            return 0.0
+    
+    def calculate_composite_quality(self, original: np.ndarray, processed: np.ndarray,
+                                  uncertainty: Optional[np.ndarray] = None,
+                                  weights: Optional[dict] = None) -> dict:
+        """Calculate comprehensive quality assessment with all metrics.
+        
+        Args:
+            original: Original bathymetric data
+            processed: Processed bathymetric data  
+            uncertainty: Uncertainty data (optional)
+            weights: Metric weights (optional)
+            
+        Returns:
+            Dictionary with all quality metrics and composite score
+        """
+        if weights is None:
+            weights = {
+                'ssim_weight': 0.25,
+                'roughness_weight': 0.25,
+                'feature_preservation_weight': 0.25,
+                'consistency_weight': 0.25
+            }
+        
+        try:
+            # Calculate all individual metrics
+            metrics = {
+                'ssim': self.calculate_ssim_safe(original, processed),
+                'roughness': self.calculate_roughness(processed),
+                'feature_preservation': self.calculate_feature_preservation(original, processed),
+                'consistency': self.calculate_depth_consistency(processed),
+                'hydrographic_compliance': self.calculate_hydrographic_standards_compliance(
+                    processed, uncertainty
+                )
+            }
+            
+            # Calculate composite quality score
+            metrics['composite_quality'] = (
+                weights['ssim_weight'] * metrics['ssim'] +
+                weights['roughness_weight'] * max(0, 1.0 - metrics['roughness']) +
+                weights['feature_preservation_weight'] * metrics['feature_preservation'] +
+                weights['consistency_weight'] * metrics['consistency']
+            )
+            
+            # Add additional derived metrics
+            metrics['mae'] = float(np.mean(np.abs(original - processed)))
+            metrics['rmse'] = float(np.sqrt(np.mean((original - processed)**2)))
+            
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating composite quality: {e}")
+            return {
+                'ssim': 0.0,
+                'roughness': 1.0,
+                'feature_preservation': 0.0,
+                'consistency': 0.0,
+                'hydrographic_compliance': 0.0,
+                'composite_quality': 0.0,
+                'mae': float('inf'),
+                'rmse': float('inf')
+            }
+    
+    @staticmethod
+    def _ensure_compatible_array(data: Union[np.ndarray, list, tuple]) -> np.ndarray:
+        """Ensure data is a compatible numpy array."""
+        if not isinstance(data, np.ndarray):
+            data = np.array(data)
+        
+        if data.size == 0:
+            return data
+        
+        # Ensure at least 2D
+        if data.ndim == 1:
+            side = int(np.sqrt(data.size))
+            if side * side == data.size:
+                data = data.reshape(side, side)
+            else:
+                # Pad to make square
+                target_size = side + 1
+                padded = np.zeros(target_size * target_size)
+                padded[:data.size] = data
+                data = padded.reshape(target_size, target_size)
+        
+        return data.astype(np.float64)
