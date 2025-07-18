@@ -324,7 +324,7 @@ class EnhancedBathymetricCAEPipeline:
                         batch_size=self.config.batch_size,
                         validation_split=validation_split,
                         callbacks=callbacks_list,
-                        verbose=0
+                        verbose=1
                     )
                     
                     trained_models.append(model)
