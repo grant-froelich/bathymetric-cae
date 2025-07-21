@@ -1,15 +1,13 @@
 """
-Enhanced Bathymetric CAE Processing Pipeline v2.0
-===========================================
+Enhanced Bathymetric CAE Processing Pipeline v2.0 - ROBUST BAG EXPORT FIX
+=========================================================================
 
-FIXED VERSION with complete error handling and method corrections:
-1. Fixed calculate_comprehensive_metrics -> calculate_composite_quality
-2. Added proper depth scaling and denormalization
-3. Fixed ensemble model saving/loading
-4. Added comprehensive error handling
-5. Fixed all attribute errors and missing methods
-
-Replace your existing processing/pipeline.py with this content.
+Complete pipeline implementation with robust BAG generation capabilities.
+This version includes the full robust export system that handles:
+- Direct BAG creation with comprehensive error checking
+- Multiple fallback strategies for reliable file generation
+- Format preservation (input format = output format)
+- Enhanced error handling and logging
 """
 
 import logging
@@ -17,11 +15,17 @@ import datetime
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any, Union
 from scipy import ndimage
 from osgeo import gdal
 import json
 import gc
+import subprocess
+import warnings
+
+# Suppress TensorFlow warnings for cleaner output
+warnings.filterwarnings('ignore', category=FutureWarning)
+tf.get_logger().setLevel('ERROR')
 
 # Matplotlib with fallback
 try:
@@ -52,169 +56,80 @@ class DepthScaler:
         
     def fit_and_normalize_depth(self, depth_data: np.ndarray) -> np.ndarray:
         """Fit scaler to depth data and return normalized version."""
-        # Store original range for reference
-        self.original_depth_range = (float(np.min(depth_data)), float(np.max(depth_data)))
+        valid_depth = depth_data[np.isfinite(depth_data)]
+        if len(valid_depth) == 0:
+            raise ValueError("No valid depth data for scaling")
         
-        # Use robust percentile-based scaling
-        self.depth_p1, self.depth_p99 = np.percentile(depth_data, [1, 99])
+        # Use robust percentile-based scaling (p1-p99)
+        self.depth_p1 = float(np.percentile(valid_depth, 1))
+        self.depth_p99 = float(np.percentile(valid_depth, 99))
+        self.original_depth_range = (self.depth_p1, self.depth_p99)
         
-        # Handle edge case where p1 == p99
-        if self.depth_p99 == self.depth_p1:
-            logging.warning("Constant depth values detected, using min/max scaling")
-            self.depth_p1 = float(np.min(depth_data))
-            self.depth_p99 = float(np.max(depth_data))
-            if self.depth_p99 == self.depth_p1:
-                return np.full_like(depth_data, 0.5)
+        # Avoid division by zero
+        range_val = self.depth_p99 - self.depth_p1
+        if range_val == 0:
+            range_val = 1.0
         
-        # Clip outliers and normalize
-        depth_clipped = np.clip(depth_data, self.depth_p1, self.depth_p99)
-        normalized = (depth_clipped - self.depth_p1) / (self.depth_p99 - self.depth_p1)
-        
-        logging.info(f"Depth scaling: original {self.original_depth_range[0]:.3f} to {self.original_depth_range[1]:.3f}m")
-        logging.info(f"Depth scaling: robust range {self.depth_p1:.3f} to {self.depth_p99:.3f}m")
-        
-        return normalized
+        normalized = (depth_data - self.depth_p1) / range_val
+        return np.clip(normalized, 0, 1)
     
     def fit_and_normalize_uncertainty(self, uncertainty_data: np.ndarray) -> np.ndarray:
         """Fit scaler to uncertainty data and return normalized version."""
-        # Store original range
-        self.original_uncertainty_range = (float(np.min(uncertainty_data)), float(np.max(uncertainty_data)))
+        valid_uncertainty = uncertainty_data[np.isfinite(uncertainty_data)]
+        if len(valid_uncertainty) == 0:
+            return uncertainty_data
         
-        # Use robust percentile-based scaling
-        self.uncertainty_p1, self.uncertainty_p99 = np.percentile(uncertainty_data, [1, 99])
+        self.uncertainty_p1 = float(np.percentile(valid_uncertainty, 1))
+        self.uncertainty_p99 = float(np.percentile(valid_uncertainty, 99))
+        self.original_uncertainty_range = (self.uncertainty_p1, self.uncertainty_p99)
         
-        # Handle edge case
-        if self.uncertainty_p99 == self.uncertainty_p1:
-            logging.warning("Constant uncertainty values detected")
-            self.uncertainty_p1 = float(np.min(uncertainty_data))
-            self.uncertainty_p99 = float(np.max(uncertainty_data))
-            if self.uncertainty_p99 == self.uncertainty_p1:
-                return np.full_like(uncertainty_data, 0.5)
+        range_val = self.uncertainty_p99 - self.uncertainty_p1
+        if range_val == 0:
+            range_val = 1.0
         
-        # Clip and normalize
-        uncertainty_clipped = np.clip(uncertainty_data, self.uncertainty_p1, self.uncertainty_p99)
-        normalized = (uncertainty_clipped - self.uncertainty_p1) / (self.uncertainty_p99 - self.uncertainty_p1)
-        
-        logging.info(f"Uncertainty scaling: original {self.original_uncertainty_range[0]:.3f} to {self.original_uncertainty_range[1]:.3f}")
-        
-        return normalized
+        normalized = (uncertainty_data - self.uncertainty_p1) / range_val
+        return np.clip(normalized, 0, 1)
     
-    def denormalize_depth(self, normalized_depth: np.ndarray) -> np.ndarray:
-        """Convert normalized depth data back to original scale."""
+    def denormalize_depth(self, normalized_data: np.ndarray) -> np.ndarray:
+        """Convert normalized data back to original depth scale."""
         if self.depth_p1 is None or self.depth_p99 is None:
-            raise ValueError("Depth scaler not fitted - call fit_and_normalize_depth first")
+            raise ValueError("Scaler not fitted")
         
-        # Convert back to original scale
-        denormalized = normalized_depth * (self.depth_p99 - self.depth_p1) + self.depth_p1
+        range_val = self.depth_p99 - self.depth_p1
+        if range_val == 0:
+            range_val = 1.0
         
-        logging.info(f"Depth denormalization: {np.min(denormalized):.3f} to {np.max(denormalized):.3f}m")
-        
-        return denormalized
+        return normalized_data * range_val + self.depth_p1
     
-    def denormalize_uncertainty(self, normalized_uncertainty: np.ndarray) -> np.ndarray:
-        """Convert normalized uncertainty data back to original scale."""
-        if self.uncertainty_p1 is None or self.uncertainty_p99 is None:
-            raise ValueError("Uncertainty scaler not fitted - call fit_and_normalize_uncertainty first")
-        
-        # Convert back to original scale
-        denormalized = normalized_uncertainty * (self.uncertainty_p99 - self.uncertainty_p1) + self.uncertainty_p1
-        
-        return denormalized
-    
-    def get_scaling_metadata(self) -> Dict[str, str]:
-        """Get scaling parameters as metadata dictionary."""
-        metadata = {}
-        
-        if self.original_depth_range:
-            metadata['ORIGINAL_DEPTH_MIN'] = f"{self.original_depth_range[0]:.6f}"
-            metadata['ORIGINAL_DEPTH_MAX'] = f"{self.original_depth_range[1]:.6f}"
-            
-        if self.depth_p1 is not None and self.depth_p99 is not None:
-            metadata['DEPTH_SCALE_P1'] = f"{self.depth_p1:.6f}"
-            metadata['DEPTH_SCALE_P99'] = f"{self.depth_p99:.6f}"
-            
-        metadata['SCALING_METHOD'] = 'robust_percentile'
-        metadata['SCALING_FIXED'] = 'YES'
-        
-        return metadata
-
-
-class FixedBathymetricProcessor(BathymetricProcessor):
-    """Fixed version of BathymetricProcessor with proper scaling."""
-    
-    def __init__(self, config: Config):
-        super().__init__(config)
-        self.depth_scaler = DepthScaler()
-    
-    def _prepare_multi_channel_input(self, depth_data: np.ndarray, uncertainty_data: np.ndarray) -> np.ndarray:
-        """Prepare multi-channel input with proper scaling tracking."""
-        # Normalize with scaling tracking
-        depth_normalized = self.depth_scaler.fit_and_normalize_depth(depth_data)
-        uncertainty_normalized = self.depth_scaler.fit_and_normalize_uncertainty(uncertainty_data)
-        
-        return np.stack([depth_normalized, uncertainty_normalized], axis=-1)
-    
-    def _prepare_single_channel_input(self, depth_data: np.ndarray) -> np.ndarray:
-        """Prepare single-channel input with proper scaling tracking."""
-        depth_normalized = self.depth_scaler.fit_and_normalize_depth(depth_data)
-        return np.expand_dims(depth_normalized, axis=-1)
-
-
-class EnhancedSeafloorClassifier:
-    """Simple classifier for seafloor types."""
-    
-    def __init__(self):
-        pass
-    
-    def classify(self, depth_data: np.ndarray) -> str:
-        """Classify seafloor type based on depth data."""
-        mean_depth = np.mean(np.abs(depth_data))
-        depth_range = np.max(depth_data) - np.min(depth_data)
-        
-        self.logger.debug(f"Mean depth: {mean_depth:.1f}m, Range: {depth_range:.1f}m")
-        
-        # Simple classification logic
-        if mean_depth < 30:
-            classification = "shallow_coastal"
-        elif mean_depth < 100:
-            classification = "continental_shelf"
-        elif mean_depth < 1000:
-            classification = "continental_slope"
-        else:
-            classification = "deep_ocean"
-        
-        confidence = 0.5  # Simple fixed confidence
-        self.logger.debug(f"Classified as {classification} with confidence {confidence:.2f}")
-        
-        return classification
+    def get_scaling_metadata(self) -> Dict:
+        """Get scaling metadata for reporting."""
+        return {
+            'depth_range': self.original_depth_range,
+            'uncertainty_range': self.original_uncertainty_range,
+            'scaling_method': 'robust_percentile_p1_p99'
+        }
 
 
 class EnhancedBathymetricCAEPipeline:
-    """Enhanced Bathymetric CAE Processing Pipeline with all fixes."""
+    """Main pipeline with robust BAG export capabilities."""
     
     def __init__(self, config: Config):
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.tf_version = tf.__version__
+        self.global_scaler = DepthScaler()
+        self.file_scalers = {}
+        
+        # Initialize processors
+        self.data_processor = BathymetricProcessor(config)
+        self.ensemble = BathymetricEnsemble(config)
         self.adaptive_processor = AdaptiveProcessor()
         self.quality_metrics = BathymetricQualityMetrics()
-        self.tf_version = tf.__version__
         
-        # Add seafloor classifier if adaptive processor doesn't have one
-        if not hasattr(self.adaptive_processor, 'seafloor_classifier'):
-            self.adaptive_processor.seafloor_classifier = EnhancedSeafloorClassifier()
-        
-        # Track depth scalers for each processed file
-        self.file_scalers: Dict[str, DepthScaler] = {}
-        self.global_scaler: Optional[DepthScaler] = None
+        # Configure TensorFlow
+        self._configure_gpu()
         
         # Setup logging
-        self._setup_logging()
-        
-        # GPU configuration
-        self._configure_gpu()
-    
-    def _setup_logging(self):
-        """Setup comprehensive logging."""
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
         
@@ -279,40 +194,111 @@ class EnhancedBathymetricCAEPipeline:
     
     def _train_ensemble_fixed(self, file_list: List[Path]) -> List:
         """Train ensemble models with proper data scaling and model saving."""
-        self.logger.info(f"Training ensemble of {self.config.ensemble_size} models...")
+        self.logger.info("Loading and preprocessing training data...")
         
-        # Load and prepare training data with scaling
-        training_inputs, training_targets, global_scaler = self._prepare_training_data_fixed(file_list)
+        # Collect all training data for global scaling
+        all_depth_data = []
+        all_uncertainty_data = []
         
-        if len(training_inputs) == 0:
-            raise ValueError("No valid training data found")
+        for file_path in file_list:
+            try:
+                data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
+                
+                if data.shape[-1] == 2:  # Has uncertainty
+                    depth = data[:, :, 0]
+                    uncertainty = data[:, :, 1]
+                    all_uncertainty_data.append(uncertainty)
+                else:
+                    depth = data[:, :, 0] if len(data.shape) == 3 else data
+                
+                all_depth_data.append(depth)
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to load {file_path.name}: {e}")
+                continue
         
-        # Store global scaler for later use
-        self.global_scaler = global_scaler
+        if not all_depth_data:
+            raise RuntimeError("No valid training data found")
         
-        # Create ensemble
+        # Create global scaler
+        combined_depth = np.concatenate([d.flatten() for d in all_depth_data])
+        normalized_depth = self.global_scaler.fit_and_normalize_depth(combined_depth)
+        
+        if all_uncertainty_data:
+            combined_uncertainty = np.concatenate([u.flatten() for u in all_uncertainty_data])
+            self.global_scaler.fit_and_normalize_uncertainty(combined_uncertainty)
+        
+        self.logger.info(f"Global scaling fitted - Depth range: [{self.global_scaler.depth_p1:.1f}, {self.global_scaler.depth_p99:.1f}]m")
+        
+        # Prepare training data
+        training_inputs = []
+        training_targets = []
+        
+        for file_path in file_list:
+            try:
+                data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
+                
+                # Create individual file scaler
+                file_scaler = DepthScaler()
+                
+                if data.shape[-1] == 2:  # Multi-channel
+                    depth = data[:, :, 0]
+                    uncertainty = data[:, :, 1]
+                    
+                    # Scale each channel
+                    depth_norm = file_scaler.fit_and_normalize_depth(depth)
+                    uncertainty_norm = file_scaler.fit_and_normalize_uncertainty(uncertainty)
+                    
+                    input_data = np.stack([depth_norm, uncertainty_norm], axis=-1)
+                    target_data = depth_norm  # Target is the depth channel
+                else:  # Single channel
+                    depth = data[:, :, 0] if len(data.shape) == 3 else data
+                    depth_norm = file_scaler.fit_and_normalize_depth(depth)
+                    
+                    input_data = np.expand_dims(depth_norm, axis=-1)
+                    target_data = depth_norm
+                
+                training_inputs.append(input_data)
+                training_targets.append(target_data)
+                
+                # Store the scaler for this file
+                self.file_scalers[str(file_path)] = file_scaler
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to prepare training data for {file_path.name}: {e}")
+                continue
+        
+        # Convert to training arrays
+        training_inputs = np.array(training_inputs)
+        training_targets = np.array(training_targets)
+        
+        if len(training_targets.shape) == 3:
+            training_targets = np.expand_dims(training_targets, axis=-1)
+        
+        self.logger.info(f"Training data shape: {training_inputs.shape} -> {training_targets.shape}")
+        
+        # Train ensemble models
         ensemble_models = []
+        input_channels = training_inputs.shape[-1]
         
         for i in range(self.config.ensemble_size):
-            self.logger.info(f"Training model {i+1}/{self.config.ensemble_size}")
+            self.logger.info(f"Training ensemble model {i+1}/{self.config.ensemble_size}")
             
             try:
-                # Create model with adaptive architecture based on available data
-                input_channels = training_inputs.shape[-1]  # Get actual channel count from data
-                model_instance = self._create_simple_model(input_channels)
+                # Create model variant
+                current_config = {
+                    'epochs': self.config.epochs,
+                    'batch_size': self.config.batch_size,
+                    'learning_rate': self.config.learning_rate * (0.9 ** i)  # Slight variation
+                }
                 
-                # Configure for current iteration
-                current_config = self._get_ensemble_config(i)
-                
-                # Setup model save path - use .keras format
-                model_save_dir = Path("ensemble_models")
-                model_save_dir.mkdir(exist_ok=True)
-                model_save_path = model_save_dir / f"ensemble_model_{i}.keras"
+                model_instance = self.ensemble.create_ensemble(input_channels)[i % len(self.ensemble.create_ensemble(input_channels))]
                 
                 # Setup callbacks
+                model_save_path = Path(f"temp_model_{i}.keras")
                 callbacks_list = [
                     tf.keras.callbacks.EarlyStopping(
-                        patience=10, 
+                        patience=15,
                         restore_best_weights=True,
                         monitor='val_loss' if self.config.validation_split > 0 else 'loss'
                     ),
@@ -412,153 +398,21 @@ class EnhancedBathymetricCAEPipeline:
     
     def _create_simple_model(self, input_channels: int):
         """Create a simple model that properly handles the input channels."""
-        inputs = tf.keras.Input(shape=(self.config.grid_size, self.config.grid_size, input_channels))
+        inputs = tf.keras.layers.Input(shape=(self.config.grid_size, self.config.grid_size, input_channels))
         
-        self.logger.info(f"Creating model with {input_channels} input channels")
-        
-        # Simple encoder-decoder that handles variable input channels
+        # Simple autoencoder architecture
         x = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
-        x = tf.keras.layers.MaxPooling2D(2)(x)
         x = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(x)
-        x = tf.keras.layers.MaxPooling2D(2)(x)
-        
-        # Decoder
-        x = tf.keras.layers.Conv2DTranspose(64, 3, activation='relu', padding='same')(x)
-        x = tf.keras.layers.UpSampling2D(2)(x)
-        x = tf.keras.layers.Conv2DTranspose(32, 3, activation='relu', padding='same')(x)
-        x = tf.keras.layers.UpSampling2D(2)(x)
-        
-        # Output: Always single channel (depth only)
+        x = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(x)
         outputs = tf.keras.layers.Conv2D(1, 3, activation='linear', padding='same')(x)
         
-        model = tf.keras.Model(inputs, outputs, name=f'SimpleCAE_{input_channels}ch')
-        
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=self.config.learning_rate), 
-            loss=tf.keras.losses.MeanSquaredError(),
-            metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
-        )
-        
-        self.logger.debug(f"Model compiled with input shape: {model.input_shape}, output shape: {model.output_shape}")
+        model = tf.keras.Model(inputs, outputs)
+        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
         
         return model
     
-    def _prepare_training_data_fixed(self, file_list: List[Path]) -> Tuple[np.ndarray, np.ndarray, DepthScaler]:
-        """Prepare training data with proper scaling - ADAPTIVE TO AVAILABLE CHANNELS."""
-        processor = FixedBathymetricProcessor(self.config)
-        
-        inputs = []
-        targets = []
-        
-        # Use a global scaler for consistency across all files
-        global_scaler = DepthScaler()
-        all_depth_data = []
-        all_uncertainty_data = []
-        has_uncertainty = False
-        
-        # First pass: collect all data to fit global scaler and determine channels
-        self.logger.info("Collecting data for global scaling...")
-        temp_data = []
-        
-        for file_path in file_list:
-            try:
-                # Get raw data to determine available channels
-                dataset = gdal.Open(str(file_path))
-                if dataset:
-                    raw_depth = dataset.GetRasterBand(1).ReadAsArray(
-                        buf_xsize=self.config.grid_size,
-                        buf_ysize=self.config.grid_size
-                    ).astype(np.float32)
-                    raw_depth = self._clean_data(raw_depth)
-                    all_depth_data.append(raw_depth)
-                    
-                    # Check if uncertainty band exists
-                    if dataset.RasterCount >= 2:
-                        raw_uncertainty = dataset.GetRasterBand(2).ReadAsArray(
-                            buf_xsize=self.config.grid_size,
-                            buf_ysize=self.config.grid_size
-                        ).astype(np.float32)
-                        raw_uncertainty = self._clean_data(raw_uncertainty)
-                        all_uncertainty_data.append(raw_uncertainty)
-                        has_uncertainty = True
-                    else:
-                        # Add dummy uncertainty for consistency
-                        all_uncertainty_data.append(None)
-                    
-                    dataset = None
-                    temp_data.append(file_path)
-                        
-            except Exception as e:
-                self.logger.warning(f"Failed to load {file_path.name}: {e}")
-                continue
-        
-        if not all_depth_data:
-            return np.array([]), np.array([]), global_scaler
-        
-        # Determine the number of channels we'll use
-        input_channels = 2 if has_uncertainty else 1
-        self.logger.info(f"Training with {input_channels} channels (depth{'+ uncertainty' if has_uncertainty else ' only'})")
-        
-        # Fit global scaler for depth
-        combined_depth = np.concatenate([d.flatten() for d in all_depth_data])
-        combined_depth = combined_depth[np.isfinite(combined_depth)]
-        global_scaler.fit_and_normalize_depth(combined_depth)
-        
-        # Fit global scaler for uncertainty if available
-        if has_uncertainty:
-            valid_uncertainty_data = [u for u in all_uncertainty_data if u is not None]
-            if valid_uncertainty_data:
-                combined_uncertainty = np.concatenate([u.flatten() for u in valid_uncertainty_data])
-                combined_uncertainty = combined_uncertainty[np.isfinite(combined_uncertainty)]
-                global_scaler.fit_and_normalize_uncertainty(combined_uncertainty)
-        
-        # Second pass: normalize using global scaler
-        self.logger.info("Normalizing data with global scaling...")
-        
-        for i, file_path in enumerate(temp_data):
-            try:
-                raw_depth = all_depth_data[i]
-                raw_uncertainty = all_uncertainty_data[i]
-                
-                # Normalize depth
-                normalized_depth = (raw_depth - global_scaler.depth_p1) / (global_scaler.depth_p99 - global_scaler.depth_p1)
-                
-                if has_uncertainty and raw_uncertainty is not None:
-                    # Normalize uncertainty
-                    normalized_uncertainty = (raw_uncertainty - global_scaler.uncertainty_p1) / (global_scaler.uncertainty_p99 - global_scaler.uncertainty_p1)
-                    # Stack depth and uncertainty
-                    input_data = np.stack([normalized_depth, normalized_uncertainty], axis=-1)  # Shape: (H, W, 2)
-                else:
-                    # Use only depth
-                    input_data = np.expand_dims(normalized_depth, axis=-1)  # Shape: (H, W, 1)
-                
-                # Store scaler for this file
-                self.file_scalers[str(file_path)] = global_scaler
-                
-                # Target is always the depth channel (for autoencoder)
-                target_data = normalized_depth[..., np.newaxis]  # Shape: (H, W, 1)
-                
-                inputs.append(input_data)
-                targets.append(target_data)
-                
-                self.logger.debug(f"File {file_path.name}: input shape {input_data.shape}, target shape {target_data.shape}")
-                
-            except Exception as e:
-                self.logger.warning(f"Failed to process {file_path.name}: {e}")
-                continue
-        
-        if not inputs:
-            return np.array([]), np.array([]), global_scaler
-        
-        final_inputs = np.array(inputs)
-        final_targets = np.array(targets)
-        
-        self.logger.info(f"Final training data: inputs {final_inputs.shape}, targets {final_targets.shape}")
-        
-        return final_inputs, final_targets, global_scaler
-    
-    def _clean_data(self, data: np.ndarray) -> np.ndarray:
-        """Clean data by handling invalid values."""
+    def _clean_invalid_data(self, data: np.ndarray) -> np.ndarray:
+        """Clean invalid data (NaN, inf) by replacing with valid values."""
         invalid_mask = ~np.isfinite(data)
         if np.any(invalid_mask):
             valid_data = data[~invalid_mask]
@@ -600,102 +454,70 @@ class EnhancedBathymetricCAEPipeline:
     
     def _process_single_file_fixed(self, file_path: Path, ensemble_models: List, scaler: DepthScaler) -> Tuple[np.ndarray, Dict, Dict]:
         """Process a single file with ensemble models - ADAPTIVE TO AVAILABLE CHANNELS."""
-        processor = FixedBathymetricProcessor(self.config)
         
-        # Get original depth data for comparison
-        dataset = gdal.Open(str(file_path))
-        original_depth = dataset.GetRasterBand(1).ReadAsArray(
-            buf_xsize=self.config.grid_size,
-            buf_ysize=self.config.grid_size
-        ).astype(np.float32)
+        # Load and preprocess data
+        data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
         
-        # Check if uncertainty is available
-        has_uncertainty = dataset.RasterCount >= 2
-        original_uncertainty = None
+        # Get adaptive parameters
+        adaptive_params = self.adaptive_processor.get_processing_parameters(data[:, :, 0])
         
+        # Store original data for comparison
+        if data.shape[-1] == 2:  # Multi-channel
+            original_depth = data[:, :, 0].copy()
+            original_uncertainty = data[:, :, 1].copy()
+            has_uncertainty = True
+        else:  # Single channel
+            original_depth = (data[:, :, 0] if len(data.shape) == 3 else data).copy()
+            original_uncertainty = None
+            has_uncertainty = False
+        
+        # Normalize input data using file scaler
         if has_uncertainty:
-            original_uncertainty = dataset.GetRasterBand(2).ReadAsArray(
-                buf_xsize=self.config.grid_size,
-                buf_ysize=self.config.grid_size
-            ).astype(np.float32)
-            original_uncertainty = self._clean_data(original_uncertainty)
-        
-        dataset = None
-        original_depth = self._clean_data(original_depth)
-        
-        # Prepare input data to match training format
-        normalized_depth = (original_depth - scaler.depth_p1) / (scaler.depth_p99 - scaler.depth_p1)
-        
-        if has_uncertainty and scaler.uncertainty_p1 is not None:
-            # Use both depth and uncertainty (match training with 2 channels)
-            normalized_uncertainty = (original_uncertainty - scaler.uncertainty_p1) / (scaler.uncertainty_p99 - scaler.uncertainty_p1)
-            input_data = np.stack([normalized_depth, normalized_uncertainty], axis=-1)  # Shape: (H, W, 2)
-            self.logger.debug(f"Using depth + uncertainty input: {input_data.shape}")
+            depth_norm = scaler.fit_and_normalize_depth(data[:, :, 0])
+            uncertainty_norm = scaler.fit_and_normalize_uncertainty(data[:, :, 1])
+            input_data = np.stack([depth_norm, uncertainty_norm], axis=-1)
         else:
-            # Use only depth (match training with 1 channel)
-            input_data = np.expand_dims(normalized_depth, axis=-1)  # Shape: (H, W, 1)
-            self.logger.debug(f"Using depth-only input: {input_data.shape}")
+            depth_norm = scaler.fit_and_normalize_depth(original_depth)
+            input_data = np.expand_dims(depth_norm, axis=-1)
         
-        # Classify seafloor and get adaptive parameters
-        seafloor_type_enum = self.adaptive_processor.seafloor_classifier.classify(original_depth)
-        adaptive_params = self.adaptive_processor.get_processing_parameters(original_depth)
+        # Clean input data
+        input_data = self._clean_invalid_data(input_data)
         
-        # Expand dimensions for batch processing
-        input_batch = np.expand_dims(input_data, axis=0)  # Shape: (1, H, W, C)
+        # Prepare for prediction
+        input_batch = np.expand_dims(input_data, axis=0)
         
-        self.logger.debug(f"Input batch shape for prediction: {input_batch.shape}")
-        
-        # Process with ensemble
-        ensemble_predictions = []
+        # Ensemble prediction
+        predictions = []
         for i, model in enumerate(ensemble_models):
             try:
                 prediction = model.predict(input_batch, verbose=0)
-                ensemble_predictions.append(prediction[0])
-                self.logger.debug(f"Model {i+1} prediction shape: {prediction.shape}")
+                predictions.append(prediction[0])
             except Exception as e:
                 self.logger.warning(f"Model {i+1} prediction failed: {e}")
-                self.logger.debug(f"Model {i+1} expected input: {model.input_shape}, got: {input_batch.shape}")
                 continue
         
-        if not ensemble_predictions:
+        if not predictions:
             raise RuntimeError("All ensemble models failed to predict")
         
-        # Combine ensemble predictions
-        if len(ensemble_predictions) == 1:
-            final_prediction = ensemble_predictions[0]
-        else:
-            final_prediction = np.mean(ensemble_predictions, axis=0)
+        # Average ensemble predictions
+        enhanced_normalized = np.mean(predictions, axis=0)
+        enhanced_normalized = enhanced_normalized[:, :, 0]  # Remove channel dimension
         
-        # Extract depth channel (output is always single channel - depth only)
-        if len(final_prediction.shape) == 3 and final_prediction.shape[-1] >= 1:
-            enhanced_depth_normalized = final_prediction[..., 0]
-        else:
-            enhanced_depth_normalized = final_prediction.squeeze()
+        # Denormalize to original scale
+        enhanced_depth_real = scaler.denormalize_depth(enhanced_normalized)
         
-        # CRITICAL FIX: Denormalize back to original scale
-        enhanced_depth_real = scaler.denormalize_depth(enhanced_depth_normalized)
-        
-        # FIXED: Calculate quality metrics using the correct method name
+        # Calculate quality metrics
         try:
-            # Use calculate_composite_quality instead of calculate_comprehensive_metrics
-            quality_metrics = self.quality_metrics.calculate_composite_quality(
-                original_depth, enhanced_depth_real, original_uncertainty,
-                weights={
-                    'ssim_weight': getattr(self.config, 'ssim_weight', 0.25),
-                    'roughness_weight': getattr(self.config, 'roughness_weight', 0.25),
-                    'feature_preservation_weight': getattr(self.config, 'feature_preservation_weight', 0.25),
-                    'consistency_weight': getattr(self.config, 'consistency_weight', 0.25)
-                }
-            )
-        except AttributeError:
-            # Fallback: calculate individual metrics manually if calculate_composite_quality doesn't exist
-            self.logger.warning("calculate_composite_quality not found, calculating individual metrics")
+            ssim = self.quality_metrics.calculate_ssim_safe(original_depth, enhanced_depth_real)
+            roughness = self.quality_metrics.calculate_roughness(enhanced_depth_real)
+            feature_preservation = self.quality_metrics.calculate_feature_preservation(original_depth, enhanced_depth_real)
+            consistency = self.quality_metrics.calculate_depth_consistency(enhanced_depth_real)
+            
             quality_metrics = {
-                'ssim': self.quality_metrics.calculate_ssim(original_depth, enhanced_depth_real),
-                'roughness': self.quality_metrics.calculate_roughness(enhanced_depth_real),
-                'feature_preservation': self.quality_metrics.calculate_feature_preservation(original_depth, enhanced_depth_real),
-                'consistency': self.quality_metrics.calculate_depth_consistency(enhanced_depth_real),
-                'composite_quality': 0.75,  # Default reasonable score
+                'ssim': float(ssim),
+                'roughness': float(roughness),
+                'feature_preservation': float(feature_preservation),
+                'consistency': float(consistency),
                 'mae': float(np.mean(np.abs(original_depth - enhanced_depth_real))),
                 'rmse': float(np.sqrt(np.mean((original_depth - enhanced_depth_real)**2)))
             }
@@ -708,6 +530,13 @@ class EnhancedBathymetricCAEPipeline:
                 quality_metrics['consistency']
             ]
             quality_metrics['composite_quality'] = float(np.mean(individual_scores))
+        
+        except Exception as e:
+            self.logger.warning(f"Quality metrics calculation failed: {e}")
+            quality_metrics = {
+                'ssim': 0.0, 'roughness': 1.0, 'feature_preservation': 0.0,
+                'consistency': 0.0, 'composite_quality': 0.0, 'mae': 0.0, 'rmse': 0.0
+            }
         
         # Create visualization with uncertainty if available
         uncertainty_for_viz = None
@@ -730,7 +559,7 @@ class EnhancedBathymetricCAEPipeline:
     def _save_enhanced_data_fixed(self, data: np.ndarray, input_file_path: Path, 
                                  output_path: Path, quality_metrics: Dict, 
                                  adaptive_params: Dict, scaler: DepthScaler):
-        """Save enhanced data with proper scaling metadata."""
+        """Save enhanced data with robust BAG export handling - FIXED VERSION."""
         try:
             # Read original file metadata
             dataset = gdal.Open(str(input_file_path))
@@ -741,109 +570,355 @@ class EnhancedBathymetricCAEPipeline:
             projection = dataset.GetProjection()
             original_metadata = dataset.GetMetadata()
             original_shape = (dataset.RasterYSize, dataset.RasterXSize)
-            dataset = None
+            
+            # Check if original file has uncertainty (BAG files)
+            has_uncertainty = dataset.RasterCount >= 2
+            uncertainty_data = None
+            if has_uncertainty:
+                uncertainty_band = dataset.GetRasterBand(2)
+                uncertainty_data = uncertainty_band.ReadAsArray()
+            
+            dataset = None  # Close immediately after reading metadata
             
             # Ensure output directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Determine output format
-            ext = output_path.suffix.lower()
-            if ext == '.bag':
-                driver_name = 'BAG'
-            elif ext in ['.tif', '.tiff']:
-                driver_name = 'GTiff'
-            elif ext == '.asc':
-                driver_name = 'AAIGrid'
+            # Determine format and use robust creation
+            input_extension = input_file_path.suffix.lower()
+            
+            if input_extension == '.bag':
+                success = self._create_robust_bag(
+                    data, output_path, geotransform, projection, 
+                    original_metadata, uncertainty_data, quality_metrics
+                )
+            elif input_extension in ['.tif', '.tiff']:
+                success = self._create_robust_geotiff(
+                    data, output_path, geotransform, projection, 
+                    original_metadata, quality_metrics
+                )
+            elif input_extension == '.asc':
+                success = self._create_robust_ascii(
+                    data, output_path, geotransform, 
+                    original_metadata, quality_metrics
+                )
             else:
+                # Default to GeoTIFF for unknown formats
+                self.logger.warning(f"Unknown format {input_extension}, defaulting to GeoTIFF")
                 output_path = output_path.with_suffix('.tif')
-                driver_name = 'GTiff'
+                success = self._create_robust_geotiff(
+                    data, output_path, geotransform, projection, 
+                    original_metadata, quality_metrics
+                )
             
-            # Create output dataset
-            driver = gdal.GetDriverByName(driver_name)
+            if success:
+                self.logger.info(f"Successfully saved enhanced data: {output_path}")
+            else:
+                self.logger.error(f"Failed to save enhanced data: {output_path}")
+                
+        except Exception as e:
+            self.logger.error(f"Error saving enhanced data: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _create_robust_bag(self, enhanced_data: np.ndarray, output_path: Path,
+                          geotransform: tuple, projection: str, metadata: dict,
+                          uncertainty_data: Optional[np.ndarray] = None,
+                          quality_metrics: Optional[Dict] = None) -> bool:
+        """Create robust BAG file with multiple fallback strategies."""
+        
+        # Strategy 1: Direct BAG creation with robust error handling
+        if self._try_direct_bag_creation(enhanced_data, output_path, geotransform, 
+                                       projection, metadata, uncertainty_data):
+            return True
+        
+        # Strategy 2: Create GeoTIFF first, then convert to BAG
+        temp_tiff = output_path.with_suffix('.temp.tif')
+        try:
+            if self._create_robust_geotiff(enhanced_data, temp_tiff, geotransform, 
+                                         projection, metadata, quality_metrics):
+                if self._convert_tiff_to_bag(temp_tiff, output_path, metadata):
+                    temp_tiff.unlink(missing_ok=True)
+                    return True
+            temp_tiff.unlink(missing_ok=True)
+        except Exception as e:
+            self.logger.warning(f"GeoTIFF→BAG conversion failed: {e}")
+            temp_tiff.unlink(missing_ok=True)
+        
+        # Strategy 3: Fallback to GeoTIFF with BAG extension warning
+        self.logger.warning("BAG creation failed, creating GeoTIFF instead")
+        fallback_path = output_path.with_suffix('.tif')
+        return self._create_robust_geotiff(enhanced_data, fallback_path, geotransform, 
+                                         projection, metadata, quality_metrics)
+
+    def _try_direct_bag_creation(self, enhanced_data: np.ndarray, output_path: Path,
+                               geotransform: tuple, projection: str, metadata: dict,
+                               uncertainty_data: Optional[np.ndarray] = None) -> bool:
+        """Attempt direct BAG creation with robust error handling."""
+        
+        try:
+            height, width = enhanced_data.shape
+            nodata_value = -9999.0
+            
+            # Prepare data
+            elevation_output = enhanced_data.astype(np.float32)
+            elevation_invalid = ~np.isfinite(elevation_output)
+            if np.any(elevation_invalid):
+                elevation_output[elevation_invalid] = nodata_value
+            
+            # Create BAG driver
+            driver = gdal.GetDriverByName('BAG')
             if driver is None:
-                raise RuntimeError(f"Driver {driver_name} not available")
+                self.logger.warning("BAG driver not available")
+                return False
             
+            # Create dataset - BAG requires 2 bands minimum
+            bands = 2 if uncertainty_data is not None else 1
             dataset = driver.Create(
                 str(output_path),
-                original_shape[1], original_shape[0], 1,
+                width, height, bands,
                 gdal.GDT_Float32
             )
             
             if dataset is None:
-                raise RuntimeError(f"Failed to create dataset: {output_path}")
+                self.logger.warning("Failed to create BAG dataset")
+                return False
             
             # Set geospatial information
-            if geotransform:
-                dataset.SetGeoTransform(geotransform)
-            if projection:
-                dataset.SetProjection(projection)
+            dataset.SetGeoTransform(geotransform)
+            dataset.SetProjection(projection)
             
-            # CRITICAL FIX: Set NoData value BEFORE writing data
-            band = dataset.GetRasterBand(1)
-            band.SetNoDataValue(-9999)  # Set NoData FIRST
-            band.SetDescription('Enhanced Elevation')
+            # Write elevation data (band 1) with robust handling
+            elevation_band = dataset.GetRasterBand(1)
+            elevation_band.SetNoDataValue(nodata_value)
+            elevation_band.SetDescription('elevation')
             
-            # Now write the data
-            band.WriteArray(data.astype(np.float32))
+            # Check WriteArray return code
+            write_result = elevation_band.WriteArray(elevation_output)
+            if write_result != 0:
+                self.logger.warning(f"WriteArray returned error code: {write_result}")
             
-            # Set comprehensive metadata including scaling info
+            # Force flush after writing elevation
+            elevation_band.FlushCache()
+            
+            # Write uncertainty data if available (band 2)
+            if uncertainty_data is not None and bands == 2:
+                uncertainty_output = uncertainty_data.astype(np.float32)
+                uncertainty_invalid = ~np.isfinite(uncertainty_output)
+                if np.any(uncertainty_invalid):
+                    uncertainty_output[uncertainty_invalid] = nodata_value
+                
+                uncertainty_band = dataset.GetRasterBand(2)
+                uncertainty_band.SetNoDataValue(nodata_value)
+                uncertainty_band.SetDescription('uncertainty')
+                uncertainty_band.WriteArray(uncertainty_output)
+                uncertainty_band.FlushCache()
+            
+            # Set comprehensive metadata
             processing_metadata = {
                 'PROCESSING_DATE': datetime.datetime.now().isoformat(),
                 'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0 FIXED',
-                'MODEL_TYPE': 'Ensemble Convolutional Autoencoder',
-                'TENSORFLOW_VERSION': self.tf_version,
-                'ENSEMBLE_SIZE': str(self.config.ensemble_size),
-                'GRID_SIZE': str(self.config.grid_size),
-                'COMPOSITE_QUALITY': f"{quality_metrics.get('composite_quality', 0):.4f}",
-                'SSIM_SCORE': f"{quality_metrics.get('ssim', 0):.4f}",
-                'SEAFLOOR_TYPE': adaptive_params.get('seafloor_type', 'unknown'),
-                'DEPTH_RANGE_MIN': f"{np.min(data):.6f}",
-                'DEPTH_RANGE_MAX': f"{np.max(data):.6f}",
-                'SCALING_ISSUE_FIXED': 'YES'
+                'ENHANCEMENT_METHOD': 'Convolutional Autoencoder with Proper Denormalization',
+                'ROBUST_BAG_CREATION': 'Direct creation with error handling'
             }
             
-            # Add scaling metadata
-            scaling_metadata = scaler.get_scaling_metadata()
-            processing_metadata.update(scaling_metadata)
+            # Set BAG-specific metadata
+            processing_metadata.update({
+                'BAG_CREATION_DATE': datetime.datetime.now().isoformat() + 'Z',
+                'BAG_VERSION': '1.6.2',
+                'BAG_DATUM': 'WGS84',
+                'BAG_COORDINATE_SYSTEM': projection
+            })
             
-            # Set metadata
-            dataset.SetMetadata(processing_metadata)
+            for key, value in processing_metadata.items():
+                dataset.SetMetadataItem(key, str(value), 'PROCESSING')
             
-            # Flush and close
+            # Force final flush and close with proper cleanup
+            if uncertainty_data is not None and bands == 2:
+                uncertainty_band.FlushCache()
+                uncertainty_band = None
+            elevation_band.FlushCache()
+            elevation_band = None
             dataset.FlushCache()
             dataset = None
             
-            self.logger.info(f"Enhanced data saved: {output_path}")
-            self.logger.info(f"Output depth range: {np.min(data):.3f} to {np.max(data):.3f}m")
+            # Verify the file was created properly
+            verify_dataset = gdal.Open(str(output_path), gdal.GA_ReadOnly)
+            if verify_dataset is None:
+                self.logger.warning("Direct BAG creation verification failed")
+                return False
+            
+            self.logger.info("✅ Direct BAG creation successful!")
+            verify_dataset = None
+            return True
             
         except Exception as e:
-            self.logger.error(f"Failed to save enhanced data: {e}")
-            raise
-    
-    def _get_ensemble_config(self, model_index: int) -> Dict:
-        """Get configuration for ensemble model variation with more consistent epochs."""
-        base_epochs = self.config.epochs
-        base_batch_size = self.config.batch_size
+            self.logger.warning(f"Direct BAG creation failed: {e}")
+            return False
+
+    def _convert_tiff_to_bag(self, tiff_path: Path, bag_path: Path, metadata: Dict) -> bool:
+        """Convert GeoTIFF to BAG using external tools."""
         
-        # Vary training parameters for ensemble diversity but keep epochs more consistent
-        variations = [
-            {'epochs': base_epochs, 'batch_size': base_batch_size},
-            {'epochs': int(base_epochs * 1.1), 'batch_size': max(1, base_batch_size // 2)},  # 10% more epochs
-            {'epochs': int(base_epochs * 0.9), 'batch_size': base_batch_size * 2},  # 10% fewer epochs
-            {'epochs': base_epochs, 'batch_size': int(base_batch_size * 1.5)},
-            {'epochs': int(base_epochs * 1.05), 'batch_size': base_batch_size}  # 5% more epochs
-        ]
+        try:
+            cmd = [
+                'gdal_translate',
+                '-of', 'BAG',
+                '-co', 'VAR_TITLE=Enhanced Bathymetric Data',
+                '-co', 'VAR_ABSTRACT=Enhanced bathymetric surface',
+                '-co', f'VAR_DATETIME={datetime.datetime.now().isoformat()}Z',
+                '-co', 'VAR_VERTICAL_DATUM=MLLW',
+                str(tiff_path),
+                str(bag_path)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0 and bag_path.exists():
+                # Verify the converted file
+                test_ds = gdal.Open(str(bag_path))
+                if test_ds is not None:
+                    self.logger.info("✅ GeoTIFF → BAG conversion successful!")
+                    test_ds = None
+                    return True
+            
+            self.logger.warning(f"gdal_translate failed: {result.stderr}")
+            return False
+            
+        except Exception as e:
+            self.logger.warning(f"TIFF to BAG conversion error: {e}")
+            return False
+
+    def _create_robust_geotiff(self, enhanced_data: np.ndarray, output_path: Path,
+                              geotransform: tuple, projection: str, metadata: dict,
+                              quality_metrics: Optional[Dict] = None) -> bool:
+        """Create robust GeoTIFF file."""
         
-        config = variations[model_index % len(variations)]
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            height, width = enhanced_data.shape
+            nodata_value = -9999.0
+            creation_options = [
+                'COMPRESS=LZW', 'TILED=YES', 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'
+            ]
+            
+            # Prepare data
+            output_data = enhanced_data.astype(np.float32)
+            invalid_mask = ~np.isfinite(output_data)
+            if np.any(invalid_mask):
+                output_data[invalid_mask] = nodata_value
+            
+            # Create GeoTIFF
+            driver = gdal.GetDriverByName('GTiff')
+            dataset = driver.Create(
+                str(output_path),
+                width, height, 1,
+                gdal.GDT_Float32,
+                creation_options
+            )
+            
+            if dataset is None:
+                self.logger.error("Failed to create GeoTIFF")
+                return False
+            
+            # Set geospatial information
+            dataset.SetGeoTransform(geotransform)
+            dataset.SetProjection(projection)
+            
+            # Write data with robust handling
+            band = dataset.GetRasterBand(1)
+            band.SetNoDataValue(nodata_value)
+            band.SetDescription('Enhanced Bathymetry (m)')
+            
+            write_result = band.WriteArray(output_data)
+            if write_result != 0:
+                self.logger.warning(f"WriteArray returned error code: {write_result}")
+            
+            # Force flush after writing
+            band.FlushCache()
+            
+            # Set statistics
+            valid_data = output_data[output_data != nodata_value]
+            if len(valid_data) > 0:
+                band.SetStatistics(
+                    float(np.min(valid_data)),
+                    float(np.max(valid_data)),
+                    float(np.mean(valid_data)),
+                    float(np.std(valid_data))
+                )
+            
+            # Set comprehensive metadata
+            band_metadata = {
+                'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0 FIXED',
+                'CREATION_DATE': datetime.datetime.now().isoformat(),
+                'DATA_TYPE': 'Enhanced Bathymetry',
+                'UNITS': 'meters'
+            }
+            
+            if quality_metrics:
+                band_metadata.update({
+                    'QUALITY_SSIM': str(quality_metrics.get('ssim', 0)),
+                    'QUALITY_COMPOSITE': str(quality_metrics.get('composite_quality', 0))
+                })
+            
+            band.SetMetadata(band_metadata)
+            
+            # Force final flush and close
+            band.FlushCache()
+            band = None
+            dataset.FlushCache()
+            dataset = None
+            
+            self.logger.info("✅ GeoTIFF created successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error creating GeoTIFF: {e}")
+            return False
+
+    def _create_robust_ascii(self, enhanced_data: np.ndarray, output_path: Path,
+                            geotransform: tuple, metadata: dict,
+                            quality_metrics: Optional[Dict] = None) -> bool:
+        """Create robust ESRI ASCII Grid file."""
         
-        # Ensure minimum epochs
-        config['epochs'] = max(config['epochs'], 5)
-        config['batch_size'] = max(config['batch_size'], 1)
-        
-        return config
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            height, width = enhanced_data.shape
+            nodata_value = -9999.0
+            
+            # Prepare data
+            output_data = enhanced_data.astype(np.float32)
+            invalid_mask = ~np.isfinite(output_data)
+            if np.any(invalid_mask):
+                output_data[invalid_mask] = nodata_value
+            
+            # Extract geotransform parameters
+            xllcorner = geotransform[0]
+            yllcorner = geotransform[3] + (height * geotransform[5])
+            cellsize = abs(geotransform[1])
+            
+            # Write ASCII Grid format
+            with open(output_path, 'w') as f:
+                f.write(f"ncols         {width}\n")
+                f.write(f"nrows         {height}\n")
+                f.write(f"xllcorner     {xllcorner:.10f}\n")
+                f.write(f"yllcorner     {yllcorner:.10f}\n")
+                f.write(f"cellsize      {cellsize:.10f}\n")
+                f.write(f"NODATA_value  {nodata_value}\n")
+                
+                # Write data row by row
+                for row in output_data:
+                    f.write(' '.join(f'{val:.6f}' for val in row) + '\n')
+            
+            self.logger.info("✅ ASCII Grid created successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error creating ASCII Grid: {e}")
+            return False
     
     def _save_ensemble_model(self, ensemble_models: List, model_path: str):
-        """Save the trained ensemble model properly with .keras format."""
+        """Save ensemble models with comprehensive error handling."""
         try:
             # Create ensemble save directory
             model_path_obj = Path(model_path)
@@ -961,56 +1036,28 @@ class EnhancedBathymetricCAEPipeline:
 # Example usage and testing functions
 def main():
     """Main function for testing the pipeline."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Enhanced Bathymetric CAE Pipeline v2.0')
-    parser.add_argument('--input', required=True, help='Input folder with bathymetric files')
-    parser.add_argument('--output', required=True, help='Output folder for processed files')
-    parser.add_argument('--config', help='Configuration file path')
-    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
-    parser.add_argument('--batch-size', type=int, default=4, help='Batch size for training')
-    parser.add_argument('--ensemble-size', type=int, default=3, help='Number of ensemble models')
-    parser.add_argument('--grid-size', type=int, default=512, help='Grid size for processing')
-    
-    args = parser.parse_args()
-    
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
-        handlers=[
-            logging.FileHandler('logs/bathymetric_processing.log'),
-            logging.StreamHandler()
-        ]
-    )
-    
-    # Create configuration
-    if args.config:
-        config = Config.load(args.config)
-    else:
+    try:
+        from config.config import Config
+        
+        # Test configuration
         config = Config(
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            ensemble_size=args.ensemble_size,
-            grid_size=args.grid_size,
-            learning_rate=0.001,
+            grid_size=256,
+            epochs=10,
+            ensemble_size=2,
+            batch_size=2,
             validation_split=0.2
         )
-    
-    # Create and run pipeline
-    pipeline = EnhancedBathymetricCAEPipeline(config)
-    
-    try:
-        pipeline.run(
-            input_folder=args.input,
-            output_folder=args.output,
-            model_name="enhanced_bathymetric_cae_v2.keras"
-        )
-        print("✅ Processing completed successfully!")
+        
+        # Create pipeline
+        pipeline = EnhancedBathymetricCAEPipeline(config)
+        print("Pipeline created successfully!")
+        
+        # Test with synthetic data if available
+        print("Pipeline ready for processing.")
+        print("Use: pipeline.run(input_folder, output_folder, model_name)")
         
     except Exception as e:
-        print(f"❌ Processing failed: {e}")
-        raise
+        print(f"Pipeline test failed: {e}")
 
 
 if __name__ == "__main__":
