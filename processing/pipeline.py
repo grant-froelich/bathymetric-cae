@@ -41,6 +41,7 @@ from models.ensemble import BathymetricEnsemble
 from core.adaptive_processor import AdaptiveProcessor
 from core.quality_metrics import BathymetricQualityMetrics
 from utils.visualization import create_enhanced_visualization, plot_training_history
+from review.expert_system import ExpertReviewSystem
 
 
 class DepthScaler:
@@ -126,6 +127,11 @@ class EnhancedBathymetricCAEPipeline:
         self.adaptive_processor = AdaptiveProcessor()
         self.quality_metrics = BathymetricQualityMetrics()
         
+        # Expert review system 
+        self.expert_review_system = ExpertReviewSystem() if getattr(config, 'enable_expert_review', False) else None
+        if self.expert_review_system:
+            self.logger.info("Expert review system initialized")
+        
         # Configure TensorFlow
         self._configure_gpu()
         
@@ -185,6 +191,14 @@ class EnhancedBathymetricCAEPipeline:
             
             # Generate summary report
             self._generate_processing_summary(file_list, str(output_path))
+            
+            # Generate expert review report
+            if self.expert_review_system:
+                try:
+                    pending_reviews = self.expert_review_system.get_pending_reviews()
+                    self.logger.info(f"Expert review: {len(pending_reviews)} files flagged for review")
+                except Exception as e:
+                    self.logger.warning(f"Expert review report failed: {e}")
             
             self.logger.info("=== PIPELINE COMPLETED SUCCESSFULLY ===")
             
@@ -537,6 +551,19 @@ class EnhancedBathymetricCAEPipeline:
                 'ssim': 0.0, 'roughness': 1.0, 'feature_preservation': 0.0,
                 'consistency': 0.0, 'composite_quality': 0.0, 'mae': 0.0, 'rmse': 0.0
             }
+        
+        # Flag for expert review if enabled  # ADD THIS SECTION
+        if self.expert_review_system and quality_metrics.get('composite_quality', 1.0) < getattr(self.config, 'quality_threshold', 0.7):
+            try:
+                self.expert_review_system.flag_for_review(
+                    filename=file_path.name,
+                    region=(0, 0, self.config.grid_size, self.config.grid_size),
+                    flag_type=f"low_quality_{quality_metrics['composite_quality']:.3f}",
+                    confidence=1.0 - quality_metrics['composite_quality']
+                )
+                self.logger.info(f"Flagged {file_path.name} for expert review")
+            except Exception as e:
+                self.logger.warning(f"Expert review flagging failed: {e}")
         
         # Create visualization with uncertainty if available
         uncertainty_for_viz = None
