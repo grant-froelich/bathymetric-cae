@@ -188,3 +188,51 @@ class ExpertReviewSystem:
         finally:
             if conn:
                 conn.close()
+                
+    def export_review_data(self, output_folder: str = "expert_reviews"):
+        """Export review data to JSON files."""
+        import json
+        from pathlib import Path
+        
+        # Create output folder if it doesn't exist
+        output_path = Path(output_folder)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Export flagged regions
+            cursor.execute('SELECT * FROM flagged_regions')
+            flagged_columns = [desc[0] for desc in cursor.description]
+            flagged_data = [dict(zip(flagged_columns, row)) for row in cursor.fetchall()]
+            
+            flagged_file = output_path / "flagged_regions.json"
+            with open(flagged_file, 'w') as f:
+                json.dump(flagged_data, f, indent=2, default=str)
+            
+            # Export expert reviews
+            cursor.execute('SELECT * FROM expert_reviews')
+            review_columns = [desc[0] for desc in cursor.description]
+            review_data = [dict(zip(review_columns, row)) for row in cursor.fetchall()]
+            
+            review_file = output_path / "expert_reviews.json"
+            with open(review_file, 'w') as f:
+                json.dump(review_data, f, indent=2, default=str)
+            
+            # Export summary statistics
+            stats = self.get_review_statistics()
+            stats_file = output_path / "review_statistics.json"
+            with open(stats_file, 'w') as f:
+                json.dump(stats, f, indent=2)
+            
+            self.logger.info(f"Review data exported to {output_folder}/")
+            return True
+            
+        except (sqlite3.Error, IOError) as e:
+            self.logger.error(f"Error exporting review data: {e}")
+            return False
+        finally:
+            if conn:
+                conn.close()
