@@ -178,3 +178,33 @@ class BathymetricProcessor:
         # Clip outliers and normalize
         data_clipped = np.clip(data, p1, p99)
         return (data_clipped - p1) / (p99 - p1)
+        
+    def get_original_depth_data(self, file_path: Union[str, Path]) -> np.ndarray:
+        """Get original depth data without normalization."""
+        file_path = Path(file_path)
+        dataset = None
+    
+        try:
+            dataset = gdal.Open(str(file_path))
+            if dataset is None:
+                raise ValueError(f"Cannot open file: {file_path}")
+        
+            # Get raw depth data without any processing
+            depth_data = dataset.GetRasterBand(1).ReadAsArray().astype(np.float32)
+            dataset = None  # Close dataset
+        
+            # Only clean invalid values, don't normalize
+            invalid_mask = ~np.isfinite(depth_data)
+            if np.any(invalid_mask):
+                valid_data = depth_data[~invalid_mask]
+                if len(valid_data) > 0:
+                    depth_data[invalid_mask] = np.mean(valid_data)
+        
+            return depth_data
+        
+        except Exception as e:
+            self.logger.error(f"Error getting original depth data from {file_path}: {e}")
+            raise
+        finally:
+            if dataset is not None:
+                dataset = None
