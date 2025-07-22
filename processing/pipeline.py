@@ -192,15 +192,25 @@ class EnhancedBathymetricCAEPipeline:
             # Generate summary report
             self._generate_processing_summary(file_list, str(output_path))
             
-            # Generate expert review report
+            # Generate expert review report and export JSON files
             if self.expert_review_system:
                 try:
                     pending_reviews = self.expert_review_system.get_pending_reviews()
                     self.logger.info(f"Expert review: {len(pending_reviews)} files flagged for review")
+                    
+                    # Export expert review data to JSON files
+                    expert_review_folder = output_path / "expert_reviews"
+                    success = self.expert_review_system.export_review_data(str(expert_review_folder))
+                    if success:
+                        self.logger.info(f"Expert review data exported to {expert_review_folder}/")
+                    else:
+                        self.logger.warning("Failed to export expert review data")
+                        
                 except Exception as e:
                     self.logger.warning(f"Expert review report failed: {e}")
             
             self.logger.info("=== PIPELINE COMPLETED SUCCESSFULLY ===")
+            return True
             
         except Exception as e:
             self.logger.error(f"Pipeline failed: {e}")
@@ -1016,7 +1026,7 @@ class EnhancedBathymetricCAEPipeline:
         try:
             summary = {
                 'processing_date': datetime.datetime.now().isoformat(),
-                'pipeline_version': 'Enhanced Bathymetric CAE v2.0 FIXED',
+                'pipeline_version': 'Enhanced Bathymetric CAE v2.0',
                 'tensorflow_version': self.tf_version,
                 'configuration': {
                     'grid_size': self.config.grid_size,
@@ -1036,7 +1046,7 @@ class EnhancedBathymetricCAEPipeline:
                 summary['global_scaling'] = self.global_scaler.get_scaling_metadata()
             
             # Save summary
-            summary_path = Path("enhanced_processing_summary_fixed.json")
+            summary_path = Path("enhanced_processing_summary.json")
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
             
