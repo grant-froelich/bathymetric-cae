@@ -226,16 +226,26 @@ class EnhancedBathymetricCAEPipeline:
         
         for file_path in file_list:
             try:
+                # Use original depth data for training scaling
+                original_depth = self.data_processor.get_original_depth_data(file_path)
+        
+                # Resize to match grid size
+                if original_depth.shape != (self.config.grid_size, self.config.grid_size):
+                    from scipy import ndimage
+                    original_depth = ndimage.zoom(
+                        original_depth, 
+                        (self.config.grid_size / original_depth.shape[0], 
+                        self.config.grid_size / original_depth.shape[1]), 
+                        order=1
+                    )
+        
+                all_depth_data.append(original_depth)
+        
+                # Get uncertainty data from processed data if needed
                 data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
-                
                 if data.shape[-1] == 2:  # Has uncertainty
-                    depth = data[:, :, 0]
                     uncertainty = data[:, :, 1]
                     all_uncertainty_data.append(uncertainty)
-                else:
-                    depth = data[:, :, 0] if len(data.shape) == 3 else data
-                
-                all_depth_data.append(depth)
                 
             except Exception as e:
                 self.logger.warning(f"Failed to load {file_path.name}: {e}")
@@ -252,7 +262,7 @@ class EnhancedBathymetricCAEPipeline:
             combined_uncertainty = np.concatenate([u.flatten() for u in all_uncertainty_data])
             self.global_scaler.fit_and_normalize_uncertainty(combined_uncertainty)
         
-        self.logger.info(f"Global scaling fitted - Depth range: [{self.global_scaler.depth_p1:.1f}, {self.global_scaler.depth_p99:.1f}]m")
+        self.logger.debug(f"Global scaling fitted - Depth range: [{self.global_scaler.original_depth_range[0]:.1f}, {self.global_scaler.original_depth_range[1]:.1f}]m")
         
         # Prepare training data
         training_inputs = []
@@ -262,22 +272,41 @@ class EnhancedBathymetricCAEPipeline:
             try:
                 data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
                 
-                # Create individual file scaler
+                # Create individual file scaler using ORIGINAL depth data
                 file_scaler = DepthScaler()
+                
+                # Get original depth data for proper scaler fitting
+                original_depth_for_scaler = self.data_processor.get_original_depth_data(file_path)
+                if original_depth_for_scaler.shape != (self.config.grid_size, self.config.grid_size):
+                    original_depth_for_scaler = ndimage.zoom(
+                        original_depth_for_scaler, 
+                        (self.config.grid_size / original_depth_for_scaler.shape[0], 
+                        self.config.grid_size / original_depth_for_scaler.shape[1]), 
+                        order=1
+                    )
                 
                 if data.shape[-1] == 2:  # Multi-channel
                     depth = data[:, :, 0]
                     uncertainty = data[:, :, 1]
                     
-                    # Scale each channel
-                    depth_norm = file_scaler.fit_and_normalize_depth(depth)
+                    # Fit scaler on ORIGINAL data, apply to preprocessed data
+                    file_scaler.fit_and_normalize_depth(original_depth_for_scaler)  # Fit on original
+                    self.logger.debug(f"File: {file_path.name}")
+                    self.logger.debug(f"Original depth for scaler range: {np.min(original_depth_for_scaler):.1f} to {np.max(original_depth_for_scaler):.1f}m")
+                    self.logger.debug(f"Scaler fitted p1: {file_scaler.depth_p1:.1f}, p99: {file_scaler.depth_p99:.1f}")
+                    self.logger.debug(f"Preprocessed depth range: {np.min(depth):.1f} to {np.max(depth):.1f}")
+                    depth_norm = (depth - file_scaler.depth_p1) / (file_scaler.depth_p99 - file_scaler.depth_p1)
+                    depth_norm = np.clip(depth_norm, 0, 1)
                     uncertainty_norm = file_scaler.fit_and_normalize_uncertainty(uncertainty)
                     
                     input_data = np.stack([depth_norm, uncertainty_norm], axis=-1)
                     target_data = depth_norm  # Target is the depth channel
                 else:  # Single channel
                     depth = data[:, :, 0] if len(data.shape) == 3 else data
-                    depth_norm = file_scaler.fit_and_normalize_depth(depth)
+                    # Fit scaler on ORIGINAL data, apply to preprocessed data
+                    file_scaler.fit_and_normalize_depth(original_depth_for_scaler)  # Fit on original
+                    depth_norm = (depth - file_scaler.depth_p1) / (file_scaler.depth_p99 - file_scaler.depth_p1)
+                    depth_norm = np.clip(depth_norm, 0, 1)
                     
                     input_data = np.expand_dims(depth_norm, axis=-1)
                     target_data = depth_norm
@@ -371,6 +400,7 @@ class EnhancedBathymetricCAEPipeline:
                 # Save training history plot if available
                 if hasattr(history, 'history') and history.history and MATPLOTLIB_AVAILABLE:
                     try:
+                        self.logger.debug(f"Attempting to create training history plot for model {i+1}")
                         plt.figure(figsize=(12, 4))
                         
                         plt.subplot(1, 2, 1)
@@ -419,7 +449,20 @@ class EnhancedBathymetricCAEPipeline:
         
         self.logger.info(f"Ensemble training completed with {len(ensemble_models)} models")
         return ensemble_models
-    
+ 
+    def _robust_normalize(self, data: np.ndarray) -> np.ndarray:
+        """Robust normalization using percentiles to handle outliers."""
+        p1, p99 = np.percentile(data, [1, 99])
+        if p99 == p1:
+            data_min, data_max = np.min(data), np.max(data)
+            if data_max == data_min:
+                return np.full_like(data, 0.5)
+            else:
+                return (data - data_min) / (data_max - data_min)
+        data_clipped = np.clip(data, p1, p99)
+        return (data_clipped - p1) / (p99 - p1)
+
+ 
     def _create_simple_model(self, input_channels: int):
         """Create a simple model that properly handles the input channels."""
         inputs = tf.keras.layers.Input(shape=(self.config.grid_size, self.config.grid_size, input_channels))
@@ -455,8 +498,27 @@ class EnhancedBathymetricCAEPipeline:
             try:
                 self.logger.info(f"Processing {file_path.name}...")
                 
-                # Get the scaler for this file
-                file_scaler = self.file_scalers.get(str(file_path), self.global_scaler)
+                # Get the scaler that was created during training
+                # This scaler is already fitted with the correct original depth range
+                file_scaler = self.file_scalers.get(str(file_path))
+                if file_scaler is None:
+                    self.logger.warning(f"No scaler found for {file_path.name}, using global scaler")
+                    file_scaler = self.global_scaler
+            
+                # Load original depth data for logging
+                original_depth_data = self.data_processor.get_original_depth_data(file_path)
+                if original_depth_data.shape != (self.config.grid_size, self.config.grid_size):
+                    original_depth_data = ndimage.zoom(
+                        original_depth_data, 
+                        (self.config.grid_size / original_depth_data.shape[0], 
+                        self.config.grid_size / original_depth_data.shape[1]), 
+                        order=1
+                    )
+                
+                # Log the scaler's ACTUAL depth range for verification
+                valid_depths = original_depth_data[np.isfinite(original_depth_data)]
+                actual_min, actual_max = np.min(valid_depths), np.max(valid_depths)
+                self.logger.debug(f"Using scaler with range: {file_scaler.depth_p1:.1f} to {file_scaler.depth_p99:.1f}m (actual file range: {actual_min:.1f} to {actual_max:.1f}m)")
                 
                 # Process with ensemble
                 enhanced_data, quality_metrics, adaptive_params = self._process_single_file_fixed(
@@ -478,12 +540,23 @@ class EnhancedBathymetricCAEPipeline:
     
     def _process_single_file_fixed(self, file_path: Path, ensemble_models: List, scaler: DepthScaler) -> Tuple[np.ndarray, Dict, Dict]:
         """Process a single file with ensemble models - ADAPTIVE TO AVAILABLE CHANNELS."""
+        # Load original depth data without any preprocessing
+        original_depth_data = self.data_processor.get_original_depth_data(file_path)
+        if original_depth_data.shape != (self.config.grid_size, self.config.grid_size):
+            from scipy import ndimage
+            original_depth_data = ndimage.zoom(
+                original_depth_data, 
+                (self.config.grid_size / original_depth_data.shape[0], 
+                self.config.grid_size / original_depth_data.shape[1]), 
+                order=1
+            )
+        
         
         # Load and preprocess data
         data, shape, metadata = self.data_processor.preprocess_bathymetric_grid(file_path)
         
         # Get adaptive parameters
-        adaptive_params = self.adaptive_processor.get_processing_parameters(data[:, :, 0])
+        adaptive_params = self.adaptive_processor.get_processing_parameters(original_depth_data)
         
         # Store original data for comparison
         if data.shape[-1] == 2:  # Multi-channel
@@ -494,14 +567,22 @@ class EnhancedBathymetricCAEPipeline:
             original_depth = (data[:, :, 0] if len(data.shape) == 3 else data).copy()
             original_uncertainty = None
             has_uncertainty = False
-        
-        # Normalize input data using file scaler
+            
+        # Use the scaler that was already fitted during training
+        # Don't refit - just use the existing scaler to normalize
         if has_uncertainty:
-            depth_norm = scaler.fit_and_normalize_depth(data[:, :, 0])
-            uncertainty_norm = scaler.fit_and_normalize_uncertainty(data[:, :, 1])
+            depth_norm = (data[:, :, 0] - scaler.depth_p1) / (scaler.depth_p99 - scaler.depth_p1)
+            depth_norm = np.clip(depth_norm, 0, 1)
+            # Don't refit uncertainty scaler - use existing values if available
+            if hasattr(scaler, 'uncertainty_p1') and scaler.uncertainty_p1 is not None:
+                uncertainty_norm = (data[:, :, 1] - scaler.uncertainty_p1) / (scaler.uncertainty_p99 - scaler.uncertainty_p1)
+                uncertainty_norm = np.clip(uncertainty_norm, 0, 1)
+            else:
+                uncertainty_norm = scaler.fit_and_normalize_uncertainty(data[:, :, 1])
             input_data = np.stack([depth_norm, uncertainty_norm], axis=-1)
         else:
-            depth_norm = scaler.fit_and_normalize_depth(original_depth)
+            depth_norm = (original_depth - scaler.depth_p1) / (scaler.depth_p99 - scaler.depth_p1)
+            depth_norm = np.clip(depth_norm, 0, 1)
             input_data = np.expand_dims(depth_norm, axis=-1)
         
         # Clean input data
@@ -526,24 +607,28 @@ class EnhancedBathymetricCAEPipeline:
         # Average ensemble predictions
         enhanced_normalized = np.mean(predictions, axis=0)
         enhanced_normalized = enhanced_normalized[:, :, 0]  # Remove channel dimension
+        enhanced_normalized = np.clip(enhanced_normalized, 0, 1)  # Ensure valid normalized range
+        
+        self.logger.debug(f"Enhanced normalized range: {np.min(enhanced_normalized):.3f} to {np.max(enhanced_normalized):.3f}")
+        self.logger.debug(f"Scaler p1: {scaler.depth_p1:.1f}, p99: {scaler.depth_p99:.1f}")
         
         # Denormalize to original scale
         enhanced_depth_real = scaler.denormalize_depth(enhanced_normalized)
         
         # Calculate quality metrics
         try:
-            ssim = self.quality_metrics.calculate_ssim_safe(original_depth, enhanced_depth_real)
+            ssim = self.quality_metrics.calculate_ssim_safe(original_depth_data, enhanced_depth_real)
             roughness = self.quality_metrics.calculate_roughness(enhanced_depth_real)
-            feature_preservation = self.quality_metrics.calculate_feature_preservation(original_depth, enhanced_depth_real)
+            feature_preservation = self.quality_metrics.calculate_feature_preservation(original_depth_data, enhanced_depth_real)
             consistency = self.quality_metrics.calculate_depth_consistency(enhanced_depth_real)
-            
+    
             quality_metrics = {
                 'ssim': float(ssim),
                 'roughness': float(roughness),
                 'feature_preservation': float(feature_preservation),
                 'consistency': float(consistency),
-                'mae': float(np.mean(np.abs(original_depth - enhanced_depth_real))),
-                'rmse': float(np.sqrt(np.mean((original_depth - enhanced_depth_real)**2)))
+                'mae': float(np.mean(np.abs(original_depth_data - enhanced_depth_real))),
+                'rmse': float(np.sqrt(np.mean((original_depth_data - enhanced_depth_real)**2)))
             }
             
             # Calculate composite score manually
@@ -581,12 +666,15 @@ class EnhancedBathymetricCAEPipeline:
             uncertainty_for_viz = original_uncertainty
         
         try:
+            self.logger.info(f"Attempting to create enhanced visualization for {file_path.name}")
             create_enhanced_visualization(
-                original_depth, enhanced_depth_real, uncertainty_for_viz,
+                original_depth_data, enhanced_depth_real, uncertainty_for_viz,
                 quality_metrics, file_path, adaptive_params
             )
         except Exception as e:
             self.logger.warning(f"Failed to create visualization for {file_path.name}: {e}")
+            import traceback
+            self.logger.warning(f"Visualization error traceback: {traceback.format_exc()}")
         
         self.logger.info(f"Quality metrics - SSIM: {quality_metrics.get('ssim', 0):.4f}, "
                         f"Composite: {quality_metrics.get('composite_quality', 0):.4f}")
@@ -611,9 +699,30 @@ class EnhancedBathymetricCAEPipeline:
             # Check if original file has uncertainty (BAG files)
             has_uncertainty = dataset.RasterCount >= 2
             uncertainty_data = None
+            original_depth_description = "depth"  # Default fallback
+            original_uncertainty_description = "uncertainty"  # Default fallback
+            # Read original band descriptions
+            try:
+                original_depth_band = dataset.GetRasterBand(1)
+                if original_depth_band:
+                    desc = original_depth_band.GetDescription()
+                    if desc:
+                        original_depth_description = desc
+                    self.logger.debug(f"Original depth band description: '{original_depth_description}'")
+            except Exception as e:
+                self.logger.warning(f"Could not read original depth band description: {e}")
+            
             if has_uncertainty:
                 uncertainty_band = dataset.GetRasterBand(2)
                 uncertainty_data = uncertainty_band.ReadAsArray()
+                # Read uncertainty band description
+                try:
+                    desc = uncertainty_band.GetDescription()
+                    if desc:
+                        original_uncertainty_description = desc
+                    self.logger.debug(f"Original uncertainty band description: '{original_uncertainty_description}'")
+                except Exception as e:
+                    self.logger.warning(f"Could not read original uncertainty band description: {e}")
             
             dataset = None  # Close immediately after reading metadata
             
@@ -626,7 +735,8 @@ class EnhancedBathymetricCAEPipeline:
             if input_extension == '.bag':
                 success = self._create_robust_bag(
                     data, output_path, geotransform, projection, 
-                    original_metadata, uncertainty_data, quality_metrics
+                    original_metadata, uncertainty_data, quality_metrics,
+                    original_depth_description, original_uncertainty_description
                 )
             elif input_extension in ['.tif', '.tiff']:
                 success = self._create_robust_geotiff(
@@ -660,12 +770,15 @@ class EnhancedBathymetricCAEPipeline:
     def _create_robust_bag(self, enhanced_data: np.ndarray, output_path: Path,
                           geotransform: tuple, projection: str, metadata: dict,
                           uncertainty_data: Optional[np.ndarray] = None,
-                          quality_metrics: Optional[Dict] = None) -> bool:
+                          quality_metrics: Optional[Dict] = None,
+                          depth_description: str = "depth",
+                          uncertainty_description: str = "uncertainty") -> bool:
         """Create robust BAG file with multiple fallback strategies."""
         
         # Strategy 1: Direct BAG creation with robust error handling
         if self._try_direct_bag_creation(enhanced_data, output_path, geotransform, 
-                                       projection, metadata, uncertainty_data):
+                                       projection, metadata, uncertainty_data,
+                                       depth_description, uncertainty_description):
             return True
         
         # Strategy 2: Create GeoTIFF first, then convert to BAG
@@ -689,18 +802,21 @@ class EnhancedBathymetricCAEPipeline:
 
     def _try_direct_bag_creation(self, enhanced_data: np.ndarray, output_path: Path,
                                geotransform: tuple, projection: str, metadata: dict,
-                               uncertainty_data: Optional[np.ndarray] = None) -> bool:
+                               uncertainty_data: Optional[np.ndarray] = None,
+                               depth_description: str = "depth",
+                               uncertainty_description: str = "uncertainty") -> bool:
         """Attempt direct BAG creation with robust error handling."""
         
+        # Initialize variables to avoid UnboundLocalError
+        elevation_band = None
+        uncertainty_band = None
+        dataset = None
+        
         try:
+            self.logger.info(f"Starting direct BAG creation for {output_path}")
             height, width = enhanced_data.shape
+            self.logger.info(f"Data shape: {height}x{width}")
             nodata_value = -9999.0
-            
-            # Prepare data
-            elevation_output = enhanced_data.astype(np.float32)
-            elevation_invalid = ~np.isfinite(elevation_output)
-            if np.any(elevation_invalid):
-                elevation_output[elevation_invalid] = nodata_value
             
             # Create BAG driver
             driver = gdal.GetDriverByName('BAG')
@@ -709,7 +825,9 @@ class EnhancedBathymetricCAEPipeline:
                 return False
             
             # Create dataset - BAG requires 2 bands minimum
-            bands = 2 if uncertainty_data is not None else 1
+            bands = 2 
+            self.logger.info(f"Creating BAG dataset: {output_path}, {width}x{height}, {bands} bands")
+            
             dataset = driver.Create(
                 str(output_path),
                 width, height, bands,
@@ -717,19 +835,38 @@ class EnhancedBathymetricCAEPipeline:
             )
             
             if dataset is None:
-                self.logger.warning("Failed to create BAG dataset")
+                self.logger.warning("BAG dataset creation returned None")
                 return False
+                
+            self.logger.info(f"BAG dataset created successfully")
             
             # Set geospatial information
+            self.logger.info(f"Setting geotransform: {geotransform}")
             dataset.SetGeoTransform(geotransform)
+            self.logger.info(f"Setting projection: {projection[:50]}...")
             dataset.SetProjection(projection)
             
             # Write elevation data (band 1) with robust handling
+            self.logger.info(f"Getting elevation band from dataset")
             elevation_band = dataset.GetRasterBand(1)
-            elevation_band.SetNoDataValue(nodata_value)
-            elevation_band.SetDescription('elevation')
+            self.logger.info(f"Elevation band result: {elevation_band}")
+            if elevation_band is None:
+                self.logger.warning("Failed to get elevation band from BAG dataset")
+                return False
             
-            # Check WriteArray return code
+            self.logger.info(f"Got elevation band successfully")
+                
+            # Prepare elevation data
+            elevation_output = enhanced_data.astype(np.float32)
+            elevation_invalid = ~np.isfinite(elevation_output)
+            if np.any(elevation_invalid):
+                elevation_output[elevation_invalid] = nodata_value
+                
+            elevation_band.SetNoDataValue(nodata_value)
+            elevation_band.SetDescription(depth_description)
+            
+            # Write elevation data with proper error checking
+            self.logger.debug(f"Enhanced data shape: {enhanced_data.shape}, elevation_output shape: {elevation_output.shape}")
             write_result = elevation_band.WriteArray(elevation_output)
             if write_result != 0:
                 self.logger.warning(f"WriteArray returned error code: {write_result}")
@@ -738,17 +875,34 @@ class EnhancedBathymetricCAEPipeline:
             elevation_band.FlushCache()
             
             # Write uncertainty data if available (band 2)
-            if uncertainty_data is not None and bands == 2:
+            if uncertainty_data is not None:
+                # Ensure uncertainty data matches enhanced data shape
+                if uncertainty_data.shape != enhanced_data.shape:
+                    from scipy import ndimage
+                    uncertainty_data = ndimage.zoom(
+                        uncertainty_data,
+                        (enhanced_data.shape[0] / uncertainty_data.shape[0],
+                         enhanced_data.shape[1] / uncertainty_data.shape[1]),
+                        order=1
+                    )
                 uncertainty_output = uncertainty_data.astype(np.float32)
                 uncertainty_invalid = ~np.isfinite(uncertainty_output)
                 if np.any(uncertainty_invalid):
                     uncertainty_output[uncertainty_invalid] = nodata_value
+            else:
+                # Create dummy uncertainty data if none provided
+                uncertainty_output = np.full_like(elevation_output, 0.5)
+
+            uncertainty_band = dataset.GetRasterBand(2)
+            if uncertainty_band is None:
+                self.logger.warning("Failed to get uncertainty band from BAG dataset")
+                return False
                 
-                uncertainty_band = dataset.GetRasterBand(2)
-                uncertainty_band.SetNoDataValue(nodata_value)
-                uncertainty_band.SetDescription('uncertainty')
-                uncertainty_band.WriteArray(uncertainty_output)
-                uncertainty_band.FlushCache()
+            uncertainty_band.SetNoDataValue(nodata_value)
+            uncertainty_band.SetDescription(uncertainty_description)
+            self.logger.debug(f"Uncertainty output shape: {uncertainty_output.shape}")
+            uncertainty_band.WriteArray(uncertainty_output)
+            uncertainty_band.FlushCache()
             
             # Set comprehensive metadata
             processing_metadata = {
@@ -770,13 +924,15 @@ class EnhancedBathymetricCAEPipeline:
                 dataset.SetMetadataItem(key, str(value), 'PROCESSING')
             
             # Force final flush and close with proper cleanup
-            if uncertainty_data is not None and bands == 2:
+            if uncertainty_band is not None:
                 uncertainty_band.FlushCache()
                 uncertainty_band = None
-            elevation_band.FlushCache()
-            elevation_band = None
-            dataset.FlushCache()
-            dataset = None
+            if elevation_band is not None:
+                elevation_band.FlushCache()
+                elevation_band = None
+            if dataset is not None:
+                dataset.FlushCache()
+                dataset = None
             
             # Verify the file was created properly
             verify_dataset = gdal.Open(str(output_path), gdal.GA_ReadOnly)
@@ -790,6 +946,12 @@ class EnhancedBathymetricCAEPipeline:
             
         except Exception as e:
             self.logger.warning(f"Direct BAG creation failed: {e}")
+            import traceback
+            self.logger.warning(f"Full traceback: {traceback.format_exc()}")
+            return False
+            
+        except Exception as e:
+            self.logger.warning(f"Direct BAG creation failed: {e}")
             return False
 
     def _convert_tiff_to_bag(self, tiff_path: Path, bag_path: Path, metadata: Dict) -> bool:
@@ -799,6 +961,7 @@ class EnhancedBathymetricCAEPipeline:
             cmd = [
                 'gdal_translate',
                 '-of', 'BAG',
+                '-scale', '1', '1', '1', '1',
                 '-co', 'VAR_TITLE=Enhanced Bathymetric Data',
                 '-co', 'VAR_ABSTRACT=Enhanced bathymetric surface',
                 '-co', f'VAR_DATETIME={datetime.datetime.now().isoformat()}Z',
@@ -1054,11 +1217,10 @@ class EnhancedBathymetricCAEPipeline:
             
             # Print summary to console
             print("\n" + "="*60)
-            print("ENHANCED BATHYMETRIC CAE PROCESSING SUMMARY (FIXED)")
+            print("ENHANCED BATHYMETRIC CAE PROCESSING SUMMARY")
             print("="*60)
             print(f"Files processed: {len(file_list)}")
             print(f"Output folder: {output_folder}")
-            print(f"Scaling issues: FIXED")
             
             if hasattr(self, 'global_scaler') and self.global_scaler.original_depth_range:
                 print(f"Original depth range: {self.global_scaler.original_depth_range[0]:.1f} to {self.global_scaler.original_depth_range[1]:.1f}m")
