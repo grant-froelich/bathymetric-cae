@@ -1,5 +1,5 @@
 """
-Enhanced Bathymetric CAE Processing Pipeline v2.0 - ROBUST BAG EXPORT FIX
+Enhanced Bathymetric CAE Processing Pipeline v2.0
 =========================================================================
 
 Complete pipeline implementation with robust BAG generation capabilities.
@@ -176,6 +176,9 @@ class EnhancedBathymetricCAEPipeline:
                 raise ValueError(f"No supported files found in {input_folder}")
             
             self.logger.info(f"Found {len(file_list)} files to process")
+            
+            # Adapt grid size to input data dimensions
+            self._adapt_grid_size_to_input(file_list)
             
             # Train ensemble models
             self.logger.info("Training ensemble models...")
@@ -407,6 +410,17 @@ class EnhancedBathymetricCAEPipeline:
                         plt.plot(history.history['loss'], label='Training Loss')
                         if 'val_loss' in history.history:
                             plt.plot(history.history['val_loss'], label='Validation Loss')
+                            # Add learning rate change indicators
+                            if 'lr' in history.history:
+                                lr_changes = []
+                                for epoch, lr in enumerate(history.history['lr']):
+                                    if epoch > 0 and lr != history.history['lr'][epoch-1]:
+                                        lr_changes.append(epoch)
+                            
+                                for i, change_epoch in enumerate(lr_changes):
+                                    label = 'LR Reduced' if i == 0 else None  # Only label first occurrence
+                                    plt.axvline(x=change_epoch, color='red', linestyle='--', alpha=0.7, 
+                                            linewidth=1, label=label)
                         plt.title(f'Model {i+1} Training Loss')
                         plt.xlabel('Epoch')
                         plt.ylabel('Loss')
@@ -416,6 +430,17 @@ class EnhancedBathymetricCAEPipeline:
                         plt.plot(history.history['mae'], label='Training MAE')
                         if 'val_mae' in history.history:
                             plt.plot(history.history['val_mae'], label='Validation MAE')
+                        # Add learning rate change indicators
+                        if 'lr' in history.history:
+                            lr_changes = []
+                            for epoch, lr in enumerate(history.history['lr']):
+                                if epoch > 0 and lr != history.history['lr'][epoch-1]:
+                                    lr_changes.append(epoch)
+                            
+                            for i, change_epoch in enumerate(lr_changes):
+                                label = 'LR Reduced' if i == 0 else None  # Only label first occurrence
+                                plt.axvline(x=change_epoch, color='red', linestyle='--', alpha=0.7, 
+                                    linewidth=1, label=label)
                         plt.title(f'Model {i+1} Training MAE')
                         plt.xlabel('Epoch')
                         plt.ylabel('MAE')
@@ -451,16 +476,24 @@ class EnhancedBathymetricCAEPipeline:
         return ensemble_models
  
     def _robust_normalize(self, data: np.ndarray) -> np.ndarray:
-        """Robust normalization using percentiles to handle outliers."""
-        p1, p99 = np.percentile(data, [1, 99])
-        if p99 == p1:
-            data_min, data_max = np.min(data), np.max(data)
-            if data_max == data_min:
-                return np.full_like(data, 0.5)
-            else:
-                return (data - data_min) / (data_max - data_min)
-        data_clipped = np.clip(data, p1, p99)
-        return (data_clipped - p1) / (p99 - p1)
+        """Non-destructive normalization that preserves bathymetric features."""
+        valid_data = data[np.isfinite(data)]
+        if len(valid_data) == 0:
+            return np.full_like(data, 0.5)
+    
+        # Use full min-max range to preserve all bathymetric features
+        data_min, data_max = np.min(valid_data), np.max(valid_data)
+    
+        if data_max == data_min:
+            return np.full_like(data, 0.5)
+    
+        # Normalize without clipping - preserves peaks and valleys
+        normalized = (data - data_min) / (data_max - data_min)
+    
+        # Only handle invalid values
+        normalized = np.where(np.isfinite(normalized), normalized, 0.5)
+    
+        return normalized
 
  
     def _create_simple_model(self, input_channels: int):
@@ -489,6 +522,122 @@ class EnhancedBathymetricCAEPipeline:
             else:
                 data.fill(0)
         return data
+        
+    def _adapt_grid_size_to_input(self, file_list: List[Path]):
+        """Adapt grid size to match input data dimensions with memory and performance considerations.
+        Only runs if adaptive processing is enabled via --enable-adaptive flag.
+        """
+        # Check if adaptive processing is enabled
+        if not getattr(self.config, 'enable_adaptive_processing', False):
+            self.logger.info(f"Adaptive processing disabled. Using fixed grid_size={self.config.grid_size}")
+            return
+            
+        if not file_list:
+            return
+            
+        self.logger.info("Adaptive processing enabled. Analyzing input data for optimal grid size...")
+            
+        # Get the first file's dimensions to set adaptive grid size
+        first_file = file_list[0]
+        try:
+            original_depth_data = self.data_processor.get_original_depth_data(first_file)
+            input_height, input_width = original_depth_data.shape
+            total_nodes = input_height * input_width
+            
+            self.logger.info(f"Input data dimensions: {input_height}x{input_width} ({total_nodes:,} nodes)")
+            
+            # Handle very large datasets (>5M nodes)
+            if total_nodes > 5_000_000:
+                self.logger.warning(f"Large dataset detected ({total_nodes:,} nodes). Implementing memory-safe processing.")
+                
+                # For very large datasets, use tiling strategy
+                if total_nodes > 25_000_000:  # >25M nodes
+                    adapted_size = 2048
+                    self.config.batch_size = 1  # Force single batch
+                    self.config.ensemble_size = min(self.config.ensemble_size, 3)  # Limit ensemble
+                    self.logger.warning(f"Massive dataset: Using tiled processing with {adapted_size}x{adapted_size} tiles")
+                    
+                elif total_nodes > 10_000_000:  # 10-25M nodes
+                    adapted_size = 2048
+                    self.config.batch_size = min(self.config.batch_size, 2)
+                    self.logger.warning(f"Very large dataset: Limited to {adapted_size}x{adapted_size} with batch_size={self.config.batch_size}")
+                    
+                else:  # 5-10M nodes
+                    adapted_size = 1024
+                    self.config.batch_size = min(self.config.batch_size, 4)
+                    self.logger.info(f"Large dataset: Using {adapted_size}x{adapted_size} with batch_size={self.config.batch_size}")
+                    
+                # Enable memory optimizations for large datasets
+                self.config.use_mixed_precision = True
+                self.config.gpu_memory_growth = True
+                
+            else:
+                # Normal adaptive sizing for smaller datasets
+                max_dim = max(input_height, input_width)
+                valid_sizes = [128, 256, 512, 1024, 2048]
+                adapted_size = min(valid_sizes, key=lambda x: abs(x - max_dim))
+            
+            # Memory safety check
+            estimated_memory_gb = self._estimate_memory_usage(adapted_size, self.config.batch_size, self.config.ensemble_size)
+            available_memory_gb = self._get_available_memory_gb()
+            
+            if estimated_memory_gb > available_memory_gb * 0.8:  # Use max 80% of available memory
+                self.logger.warning(f"Estimated memory usage ({estimated_memory_gb:.1f}GB) exceeds 80% of available memory ({available_memory_gb:.1f}GB)")
+                
+                # Auto-adjust parameters to fit memory
+                while estimated_memory_gb > available_memory_gb * 0.8 and adapted_size > 128:
+                    if adapted_size > 512:
+                        adapted_size = adapted_size // 2
+                    else:
+                        self.config.batch_size = max(1, self.config.batch_size // 2)
+                    
+                    estimated_memory_gb = self._estimate_memory_usage(adapted_size, self.config.batch_size, self.config.ensemble_size)
+                
+                self.logger.info(f"Adjusted to grid_size={adapted_size}, batch_size={self.config.batch_size} for memory safety")
+            
+            # Update config if different from current
+            if adapted_size != self.config.grid_size:
+                self.logger.info(f"Adapting grid size from {self.config.grid_size} to {adapted_size} based on input dimensions ({input_height}x{input_width})")
+                self.config.grid_size = adapted_size
+            else:
+                self.logger.info(f"Grid size {self.config.grid_size} is already optimal for input dimensions")
+            
+            self.logger.info(f"Final adaptive configuration: grid_size={self.config.grid_size}, batch_size={self.config.batch_size}, ensemble_size={self.config.ensemble_size}")
+            self.logger.info(f"Estimated memory usage: {estimated_memory_gb:.1f}GB")
+                
+        except Exception as e:
+            self.logger.warning(f"Adaptive grid sizing failed: {e}, using configured grid_size={self.config.grid_size}")
+    
+    def _estimate_memory_usage(self, grid_size: int, batch_size: int, ensemble_size: int) -> float:
+        """Estimate memory usage in GB for given parameters."""
+        # Rough estimation based on typical model sizes and data
+        bytes_per_float32 = 4
+        
+        # Input data memory (batch_size * grid_size^2 * channels * float32)
+        input_memory = batch_size * grid_size * grid_size * 2 * bytes_per_float32
+        
+        # Model memory (approximate based on typical CNN architectures)
+        model_params = grid_size * grid_size * 32 * 0.1  # Rough estimate
+        model_memory = model_params * bytes_per_float32 * ensemble_size
+        
+        # Working memory for training (gradients, activations, etc.)
+        working_memory = input_memory * 4  # Rough multiplier for training overhead
+        
+        total_bytes = input_memory + model_memory + working_memory
+        return total_bytes / (1024**3)  # Convert to GB
+    
+    def _get_available_memory_gb(self) -> float:
+        """Get available system memory in GB."""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            return memory.available / (1024**3)
+        except ImportError:
+            self.logger.warning("psutil not available, estimating 8GB available memory")
+            return 8.0
+        except Exception:
+            self.logger.warning("Could not determine available memory, estimating 8GB")
+            return 8.0
     
     def _process_files_enhanced_fixed(self, ensemble_models: List, file_list: List[Path], output_folder: str):
         """Process files with proper denormalization before saving."""
@@ -815,7 +964,7 @@ class EnhancedBathymetricCAEPipeline:
         try:
             self.logger.info(f"Starting direct BAG creation for {output_path}")
             height, width = enhanced_data.shape
-            self.logger.info(f"Data shape: {height}x{width}")
+            self.logger.debug(f"Data shape: {height}x{width}")
             nodata_value = -9999.0
             
             # Create BAG driver
@@ -841,20 +990,20 @@ class EnhancedBathymetricCAEPipeline:
             self.logger.info(f"BAG dataset created successfully")
             
             # Set geospatial information
-            self.logger.info(f"Setting geotransform: {geotransform}")
+            self.logger.debug(f"Setting geotransform: {geotransform}")
             dataset.SetGeoTransform(geotransform)
-            self.logger.info(f"Setting projection: {projection[:50]}...")
+            self.logger.debug(f"Setting projection: {projection[:50]}...")
             dataset.SetProjection(projection)
             
             # Write elevation data (band 1) with robust handling
-            self.logger.info(f"Getting elevation band from dataset")
+            self.logger.debug(f"Getting elevation band from dataset")
             elevation_band = dataset.GetRasterBand(1)
-            self.logger.info(f"Elevation band result: {elevation_band}")
+            self.logger.debug(f"Elevation band result: {elevation_band}")
             if elevation_band is None:
                 self.logger.warning("Failed to get elevation band from BAG dataset")
                 return False
             
-            self.logger.info(f"Got elevation band successfully")
+            self.logger.debug(f"Got elevation band successfully")
                 
             # Prepare elevation data
             elevation_output = enhanced_data.astype(np.float32)
@@ -907,8 +1056,8 @@ class EnhancedBathymetricCAEPipeline:
             # Set comprehensive metadata
             processing_metadata = {
                 'PROCESSING_DATE': datetime.datetime.now().isoformat(),
-                'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0 FIXED',
-                'ENHANCEMENT_METHOD': 'Convolutional Autoencoder with Proper Denormalization',
+                'PROCESSING_SOFTWARE': 'Enhanced Bathymetric CAE v2.0',
+                'ENHANCEMENT_METHOD': 'Convolutional Autoencoder',
                 'ROBUST_BAG_CREATION': 'Direct creation with error handling'
             }
             
