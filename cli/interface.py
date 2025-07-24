@@ -60,6 +60,18 @@ Examples:
     model_group.add_argument('--dropout-rate', type=float, help='Dropout rate')
     model_group.add_argument('--ensemble-size', type=int, help='Number of models in ensemble')
     
+    # Feature preservation arguments
+    model_group.add_argument('--model-variant', choices=['advanced', 'uncertainty', 'lightweight', 'feature_preserving'], 
+                            default='feature_preserving', help='Model architecture variant to use')
+    model_group.add_argument('--preserve-anthropogenic', action='store_true', default=True, 
+                            help='Enable preservation of man-made features')
+    model_group.add_argument('--preserve-geological', action='store_true', default=True, 
+                            help='Enable preservation of geological features')
+    model_group.add_argument('--use-edge-preserving-loss', action='store_true', default=True, 
+                            help='Use custom edge-preserving loss function')
+    model_group.add_argument('--anthropogenic-priority', type=float, default=1.0, 
+                            help='Priority weight for anthropogenic features (0.0-1.0)')
+    
     # Enhanced Features
     features_group = parser.add_argument_group('Enhanced Features')
     features_group.add_argument('--enable-adaptive', action='store_true',
