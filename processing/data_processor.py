@@ -164,20 +164,24 @@ class BathymetricProcessor:
         return np.expand_dims(depth_normalized, axis=-1)
     
     def _robust_normalize(self, data: np.ndarray) -> np.ndarray:
-        """Robust normalization using percentiles to handle outliers."""
-        p1, p99 = np.percentile(data, [1, 99])
-        
-        if p99 == p1:
-            self.logger.warning("Constant values detected, using standard normalization")
-            data_min, data_max = np.min(data), np.max(data)
-            if data_max == data_min:
-                return np.full_like(data, 0.5)
-            else:
-                return (data - data_min) / (data_max - data_min)
-        
-        # Clip outliers and normalize
-        data_clipped = np.clip(data, p1, p99)
-        return (data_clipped - p1) / (p99 - p1)
+        """Non-destructive normalization that preserves bathymetric features."""
+        valid_data = data[np.isfinite(data)]
+        if len(valid_data) == 0:
+            return np.full_like(data, 0.5)
+    
+        # Use full min-max range to preserve all bathymetric features
+        data_min, data_max = np.min(valid_data), np.max(valid_data)
+    
+        if data_max == data_min:
+            return np.full_like(data, 0.5)
+    
+        # Normalize without clipping - preserves peaks and valleys
+        normalized = (data - data_min) / (data_max - data_min)
+    
+        # Only handle invalid values
+        normalized = np.where(np.isfinite(normalized), normalized, 0.5)
+    
+        return normalized
         
     def get_original_depth_data(self, file_path: Union[str, Path]) -> np.ndarray:
         """Get original depth data without normalization."""
