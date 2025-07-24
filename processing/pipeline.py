@@ -348,7 +348,17 @@ class EnhancedBathymetricCAEPipeline:
                     'learning_rate': self.config.learning_rate * (0.9 ** i)  # Slight variation
                 }
                 
-                model_instance = self.ensemble.create_ensemble(input_channels)[i % len(self.ensemble.create_ensemble(input_channels))]
+                # Create ensemble models once and cache them
+                if not hasattr(self, '_ensemble_models_cache') or self._ensemble_models_cache is None:
+                    self.logger.info("Creating ensemble models...")
+                    self._ensemble_models_cache = self.ensemble.create_ensemble(input_channels)
+
+                # Get the specific model for this iteration
+                ensemble_models_list = self._ensemble_models_cache
+                model_index = i % len(ensemble_models_list)
+                model_instance = ensemble_models_list[model_index]
+
+                self.logger.info(f"Using ensemble model {model_index + 1} for training iteration {i + 1}")
                 
                 # Setup callbacks
                 model_save_path = Path(f"temp_model_{i}.keras")
